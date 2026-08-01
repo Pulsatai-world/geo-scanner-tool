@@ -12,7 +12,7 @@ const USER_AGENTS = {
   bare: { label: 'Plain Default UA', ua: 'GEO-Scanner/1.0' }
 };
 
-const FETCH_TIMEOUT_MS = 8000;
+const FETCH_TIMEOUT_MS = 9000;
 
 async function fetchSafe(url, uaString) {
   const controller = new AbortController();
@@ -78,23 +78,30 @@ async function checkRobots(origin) {
 
 async function checkMultiUA(pageUrl) {
   const entries = Object.entries(USER_AGENTS);
-  const results = await Promise.all(entries.map(async ([key, cfg]) => {
+  // One fetch per user-agent, run in parallel — the browser-UA response is reused as the
+  // homepage source for every other check, so the homepage is never fetched twice.
+  const raw = await Promise.all(entries.map(async ([key, cfg]) => {
     const r = await fetchSafe(pageUrl, cfg.ua);
-    return { key, label: cfg.label, ua: cfg.ua, status: r.status, ok: r.ok, ms: r.ms, bodyLength: r.text.length, blocked: !r.ok || r.status === 403 || r.status === 429 || r.status >= 500 };
+    return { key, cfg, r };
   }));
+  const results = raw.map(({ key, cfg, r }) => ({ key, label: cfg.label, ua: cfg.ua, status: r.status, ok: r.ok, ms: r.ms, bodyLength: r.text.length, blocked: !r.ok || r.status === 403 || r.status === 429 || r.status >= 500, error: r.error }));
+  const browserFetch = raw.find(x => x.key === 'browser').r;
   const baseline = results.find(r => r.key === 'browser');
   const blockedBots = results.filter(r => r.key !== 'browser' && r.blocked);
   const suspiciousSizeDiff = results.filter(r => r.key !== 'browser' && r.ok && baseline?.ok && baseline.bodyLength > 0 && Math.abs(r.bodyLength - baseline.bodyLength) / baseline.bodyLength > 0.6);
   let status = 'PASS';
   let detail = 'All tested user-agents (browser, GPTBot, ClaudeBot, Googlebot, plain default) received the same, successful response.';
-  if (blockedBots.length) {
+  if (!baseline?.ok) {
+    status = 'FAIL';
+    detail = `The homepage did not respond at all for any user-agent, including a plain browser UA (${baseline?.error || 'no response'}). The site itself is unreachable right now — this blocks every crawler, not just AI bots.`;
+  } else if (blockedBots.length) {
     status = 'FAIL';
     detail = `Blocked or errored for: ${blockedBots.map(b => `${b.label} (HTTP ${b.status || 'no response'})`).join(', ')} while the browser UA succeeded (HTTP ${baseline?.status}). This points to server-level bot-blocking (firewall/WAF rule, hosting panel "block bad bots" setting) — the exact failure mode a manual check is slow to diagnose.`;
   } else if (suspiciousSizeDiff.length) {
     status = 'WARNING';
     detail = `Response size differs sharply by user-agent for: ${suspiciousSizeDiff.map(b => b.label).join(', ')} — worth a manual look in case a bot is served a stripped-down or cloaked page.`;
   }
-  return { id: 'multi-ua', title: 'Multi-user-agent crawl test', status, detail, raw: { results } };
+  return { check: { id: 'multi-ua', title: 'Multi-user-agent crawl test', status, detail, raw: { results } }, browserFetch };
 }
 
 function checkXRobotsTag(headers) {
@@ -154,7 +161,11 @@ async function checkSitemap(origin) {
   return { id: 'sitemap', title: 'sitemap.xml', status, detail, raw: { url: sitemapUrl, urlCount, isIndex } };
 }
 
-function checkResponseTime(ms) {
+function checkResponseTime(homepageFetch) {
+  const ms = homepageFetch.ms;
+  if (!homepageFetch.ok) {
+    return { id: 'response-time', title: 'Response time', status: 'FAIL', detail: `Homepage did not respond within ${Math.round(ms / 1000)}s (${homepageFetch.error || 'no response'}) — treat this as a hard crawlability failure, not just a slow page.`, raw: { ms, error: homepageFetch.error } };
+  }
   let status = 'PASS';
   let detail = `Homepage responded in ${ms}ms.`;
   if (ms > 3000) {
@@ -440,35 +451,43 @@ export default async (request) => {
     : [];
 
   try {
-    // Section 1 checks that need their own requests, run in parallel
-    const [robotsResult, sitemapResult, multiUAResult, homepageFetch] = await Promise.all([
+    // Everything runs as ONE parallel wave — robots.txt, sitemap.xml, the 5-user-agent homepage
+    // test (whose browser-UA response is reused as the homepage source below, so the homepage is
+    // never fetched twice), and every extra page. Total wall-clock is bounded by the slowest
+    // single request, not the sum of them, which matters given Netlify's function time limit.
+    const [robotsResult, sitemapResult, multiUA, extraPageFetches] = await Promise.all([
       checkRobots(origin),
       checkSitemap(origin),
       checkMultiUA(homepageUrl),
-      fetchSafe(homepageUrl, USER_AGENTS.browser.ua)
+      Promise.all(extraPages.map(async u => ({ url: u, ...(await fetchSafe(u, USER_AGENTS.browser.ua)) })))
     ]);
 
-    if (!homepageFetch.ok) {
-      return new Response(JSON.stringify({ error: `Could not fetch the homepage: ${homepageFetch.error || 'unknown error'}` }), { status: 502, headers: { 'Content-Type': 'application/json' } });
+    const homepageFetch = multiUA.browserFetch;
+    const section1Checks = [robotsResult];
+
+    let $home = null;
+    if (homepageFetch.ok) {
+      $home = cheerio.load(homepageFetch.text);
+      section1Checks.push(
+        multiUA.check,
+        checkXRobotsTag(homepageFetch.headers),
+        checkNoindexMeta($home),
+        sitemapResult,
+        checkResponseTime(homepageFetch)
+      );
+    } else {
+      // Homepage never responded (timeout, DNS failure, connection refused, etc). That is itself
+      // the most severe possible Layer-1 finding — report it as one, rather than erroring the
+      // whole scan and telling the user nothing. X-Robots-Tag / noindex genuinely cannot be
+      // determined with no page fetched, so they're omitted rather than falsely marked PASS.
+      section1Checks.push(multiUA.check, sitemapResult, checkResponseTime(homepageFetch));
     }
 
-    const $home = cheerio.load(homepageFetch.text);
-    const section1Checks = [
-      robotsResult,
-      multiUAResult,
-      checkXRobotsTag(homepageFetch.headers),
-      checkNoindexMeta($home),
-      sitemapResult,
-      checkResponseTime(homepageFetch.ms)
+    // Section 2 + 3 source pages: homepage (if it loaded) + any extra pages that loaded
+    const pageFetches = [
+      { url: homepageUrl, html: homepageFetch.text, ok: homepageFetch.ok, status: homepageFetch.status },
+      ...extraPageFetches.map(p => ({ url: p.url, html: p.text, ok: p.ok, status: p.status }))
     ];
-
-    // Section 2 + 3 source pages: homepage + up to 5 extra pages
-    const pageUrls = [homepageUrl, ...extraPages];
-    const pageFetches = await Promise.all(pageUrls.map(async (u, idx) => {
-      if (idx === 0) return { url: u, html: homepageFetch.text, ok: true };
-      const r = await fetchSafe(u, USER_AGENTS.browser.ua);
-      return { url: u, html: r.text, ok: r.ok, status: r.status };
-    }));
 
     const validPages = pageFetches.filter(p => p.ok && p.html);
     const skippedPages = pageFetches.filter(p => !p.ok).map(p => ({ url: p.url, status: p.status }));
