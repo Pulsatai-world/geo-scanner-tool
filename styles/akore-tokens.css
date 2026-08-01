@@ -1,0 +1,124 @@
+/* ============================================================================
+   Akore Labs — shared design tokens (single source of truth)
+   Sourced from "Akore Labs Design System/tokens/*". Every page links this file
+   so palette / type / spacing / effects live in ONE place instead of being
+   re-declared inline per page. Legacy alias names used across the app are
+   mapped at the bottom so this is a drop-in for existing markup.
+   ============================================================================ */
+@import url("https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap");
+
+:root {
+  /* ---- Brand: violet ramp ---- */
+  --violet-900: #2a1f6b;
+  --violet-700: #4834b0;
+  --violet-600: #6d4fe0;   /* primary brand violet (the "A") */
+  --violet-500: #8168ea;
+  --violet-400: #9b86f2;
+  --violet-300: #bcaef7;
+  --violet-100: #ece7fd;
+  --violet-50:  #f6f3fe;
+
+  /* ---- Brand: emerald ramp (the accent / locator dot) ---- */
+  --emerald-700: #0f7d5b;
+  --emerald-600: #159066;
+  --emerald-500: #1ea97c;
+  --emerald-400: #34c592;
+  --emerald-300: #7bdcb6;
+  --emerald-100: #d5f4e8;
+  --emerald-50:  #eefaf4;
+
+  /* ---- Ink / cool-slate neutrals ---- */
+  --ink-950: #08090c;
+  --ink-900: #101319;
+  --ink-800: #1a1f28;
+  --ink-700: #2a313d;
+  --ink-600: #3d4653;
+  --ink-500: #566172;
+  --ink-400: #757f8f;
+  --ink-300: #969aa3;
+  --ink-200: #c3c8d0;
+  --ink-100: #e3e6ea;
+  --ink-50:  #f4f6f8;
+  --white:   #ffffff;
+
+  /* ---- Gradients (use sparingly, never as a page background) ---- */
+  --grad-violet: linear-gradient(150deg, #8168ea 0%, #6d4fe0 55%, #4834b0 100%);
+  --grad-violet-emerald: linear-gradient(120deg, #6d4fe0 0%, #1ea97c 100%);
+
+  /* ---- Semantic aliases ---- */
+  --brand:         var(--violet-600);
+  --brand-strong:  var(--violet-700);
+  --accent:        var(--emerald-500);   /* DS: accent == emerald, not violet */
+  --accent-strong: var(--emerald-600);
+
+  --text-strong:   var(--ink-950);
+  --text-body:     var(--ink-700);
+  --text-muted:    var(--ink-400);
+  --text-brand:    var(--violet-600);
+  --text-accent:   var(--emerald-500);
+
+  --border-subtle: var(--ink-100);
+  --border-default:var(--ink-200);
+  --border-strong-c: var(--ink-300);
+  --focus-ring:    rgba(109,79,224,0.35);
+
+  /* ---- Status (DS) ---- */
+  --success: #1ea97c;
+  --success-100: var(--emerald-100);
+  --warning: #d99312;
+  --warning-100: #f8ecd0;
+  --danger:  #d94a4a;
+  --danger-100: #f7dcdc;
+  --info:    #6d4fe0;
+
+  /* ---- Type ---- */
+  --font-display: "Montserrat", "Helvetica Neue", Arial, sans-serif;
+  --font-body:    "Manrope", "Helvetica Neue", Arial, sans-serif;
+  --font-mono:    "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --fw-regular: 400; --fw-medium: 500; --fw-semibold: 600; --fw-bold: 700; --fw-extra: 800;
+  --fs-display: 4.5rem; --fs-h1: 3rem; --fs-h2: 2.25rem; --fs-h3: 1.75rem; --fs-h4: 1.375rem;
+  --fs-lead: 1.25rem; --fs-body: 1rem; --fs-sm: 0.875rem; --fs-xs: 0.75rem; --fs-eyebrow: 0.75rem;
+  --lh-tight: 1.05; --lh-snug: 1.2; --lh-normal: 1.5; --lh-relaxed: 1.65;
+  --ls-tight: -0.02em; --ls-normal: 0; --ls-wide: 0.08em; --ls-wider: 0.16em; --ls-widest: 0.24em;
+
+  /* ---- Spacing (4px grid) ---- */
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 20px;
+  --space-6: 24px; --space-8: 32px; --space-10: 40px; --space-12: 48px; --space-16: 64px;
+  --space-20: 80px; --space-24: 96px; --space-32: 128px;
+  --container-max: 1200px; --container-narrow: 760px; --gutter: 24px;
+
+  /* ---- Radii ---- */
+  --radius-xs: 4px; --radius-sm: 8px; --radius-md: 12px; --radius-lg: 16px;
+  --radius-xl: 24px; --radius-2xl: 32px; --radius-pill: 999px;
+
+  /* ---- Shadows (cool-tinted, low elevation) ---- */
+  --shadow-xs: 0 1px 2px rgba(16,19,25,0.06);
+  --shadow-sm: 0 1px 3px rgba(16,19,25,0.08), 0 1px 2px rgba(16,19,25,0.04);
+  --shadow-md: 0 6px 16px rgba(16,19,25,0.08), 0 2px 4px rgba(16,19,25,0.04);
+  --shadow-lg: 0 18px 40px rgba(16,19,25,0.12), 0 6px 12px rgba(16,19,25,0.06);
+  --shadow-brand: 0 12px 30px rgba(109,79,224,0.28);
+  --shadow-accent: 0 12px 30px rgba(30,169,124,0.24);
+
+  /* ---- Motion ---- */
+  --ease-standard: cubic-bezier(0.2, 0.6, 0.2, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-fast: 120ms; --dur-base: 200ms; --dur-slow: 360ms;
+
+  /* ========================================================================
+     Compat aliases — legacy names used in the existing pages, mapped to DS
+     values so this file is a drop-in. New/edited CSS should prefer the DS
+     names above. (Note: --navy and --teal were misnamed violets.)
+     ======================================================================== */
+  --navy:  var(--violet-600);
+  --teal:  var(--violet-600);
+  --emerald: var(--emerald-500);
+  --muted: var(--ink-400);
+  --ink:   var(--ink-950);
+  --ink-60: var(--ink-400);
+  --ink-30: var(--ink-200);
+  --display: var(--font-display);
+  --mono:  var(--font-mono);
+  --border-bright: var(--ink-200);
+  --border-strong: var(--ink-200);
+  --radius: var(--radius-lg);
+}

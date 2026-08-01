@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Akore Labs — GEO On-Page Scanner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="/styles/akore-tokens.css">
+<style>
+  :root{
+    --navy: var(--violet-600);
+    --dark: var(--ink-950);
+    --ice: var(--ink-50);
+    --ice2: var(--violet-50);
+    --line: var(--ink-100);
+  }
+  *{box-sizing:border-box}
+  body{font-family:var(--font-body);background:var(--ice);color:var(--dark);margin:0;-webkit-font-smoothing:antialiased;padding-bottom:64px}
+
+  /* ── header / hero ── */
+  .head{background:var(--ink-950);color:#fff;padding:38px 48px 30px;position:relative;overflow:hidden}
+  .head::after{content:"";position:absolute;right:-80px;top:-120px;width:420px;height:420px;border-radius:50%;background:radial-gradient(circle,rgba(109,79,224,.45),transparent 70%)}
+  .head::before{content:"";position:absolute;left:-100px;bottom:-140px;width:360px;height:360px;border-radius:50%;background:radial-gradient(circle,rgba(30,169,124,.28),transparent 70%)}
+  .headnav{position:relative;z-index:2;display:flex;gap:14px;justify-content:space-between;align-items:center;margin-bottom:20px}
+  .logo{display:flex;align-items:center;gap:14px}
+  .logo-lockup{height:32px;width:auto;display:block}
+  .logo-divider{width:1px;height:18px;background:rgba(255,255,255,.25)}
+  .logo-sub{font-family:var(--font-body);font-size:11px;font-weight:700;color:#c9c2e8;text-transform:uppercase;letter-spacing:.16em;display:flex;align-items:center;gap:8px}
+  .logo-sub::before{content:"";display:inline-block;width:16px;height:2px;background:var(--emerald-500);border-radius:1px}
+  .eyebrow{font-family:var(--font-body);font-weight:700;letter-spacing:.18em;font-size:11px;text-transform:uppercase;color:#c9c2e8;display:inline-flex;align-items:center;gap:8px}
+  h1.pagetitle{font-family:var(--font-display);font-weight:700;font-size:26px;margin:10px 0 6px;position:relative;z-index:1}
+  .sub{color:#c9c2e8;font-size:14px;line-height:1.5;max-width:680px;position:relative;z-index:1}
+
+  /* ── layout ── */
+  .wrap{max-width:1040px;margin:0 auto;padding:28px 24px 0}
+  .card{background:#fff;border:1px solid var(--line);border-radius:var(--radius-lg);padding:24px;margin-bottom:20px;box-shadow:var(--shadow-sm)}
+  .card-title{font-family:var(--font-display);font-size:18px;font-weight:700;color:var(--dark);margin-bottom:4px;letter-spacing:-.01em}
+  .card-caption{font-size:12.5px;color:var(--ink-400);margin-bottom:16px}
+
+  /* ── form ── */
+  .field{margin-bottom:14px}
+  .field label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.08em;font-weight:700;color:var(--ink-400);margin-bottom:6px}
+  .field input{width:100%;font-family:var(--font-body);font-size:14px;color:var(--dark);background:#fff;border:1px solid var(--ink-200);border-radius:var(--radius-md);padding:11px 14px;outline:none;transition:border-color .15s,box-shadow .15s}
+  .field input:focus{border-color:var(--navy);box-shadow:0 0 0 3px var(--focus-ring)}
+  .field-hint{font-size:11.5px;color:var(--ink-400);line-height:1.5;margin-top:5px}
+  details.adv{border:1px solid var(--line);border-radius:var(--radius-md);padding:0;margin-bottom:16px;overflow:hidden}
+  details.adv summary{cursor:pointer;padding:12px 16px;font-size:13px;font-weight:700;color:var(--navy);list-style:none;display:flex;align-items:center;gap:8px;background:var(--ice2)}
+  details.adv summary::-webkit-details-marker{display:none}
+  details.adv summary::before{content:"▸";transition:transform .15s}
+  details.adv[open] summary::before{transform:rotate(90deg)}
+  details.adv .adv-body{padding:16px}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font-family:var(--font-body);font-weight:700;font-size:13px;letter-spacing:.01em;padding:12px 22px;min-height:42px;border-radius:var(--radius-pill);border:none;cursor:pointer;background:var(--navy);color:#fff;box-shadow:var(--shadow-sm);transition:background .12s,box-shadow .2s,transform .12s;white-space:nowrap;text-decoration:none}
+  .btn:hover{background:var(--violet-700);box-shadow:var(--shadow-brand)}
+  .btn:active{transform:translateY(1px)}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .btn-ghost{background:transparent;color:var(--navy);border:1px solid var(--ink-200);box-shadow:none}
+  .btn-ghost:hover{background:var(--violet-50);box-shadow:none}
+  .btn-sm{padding:8px 16px;font-size:11.5px;min-height:34px}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .err-box{background:var(--danger-100);color:#8a2b2b;border-radius:var(--radius-md);padding:12px 16px;font-size:13px;margin-bottom:16px;display:none}
+
+  /* ── badges ── */
+  .badge{display:inline-flex;align-items:center;gap:6px;font-family:var(--font-body);font-size:10.5px;font-weight:700;padding:4px 11px;border-radius:999px;letter-spacing:.03em;white-space:nowrap;text-transform:uppercase}
+  .badge-PASS{background:var(--emerald-100);color:var(--emerald-700)}
+  .badge-WARNING{background:var(--warning-100);color:#8a6a12}
+  .badge-FAIL{background:var(--danger-100);color:#b03a3a}
+
+  /* ── score hero ── */
+  .score-hero{margin-top:4px;background:var(--dark);color:#fff;border-radius:var(--radius-lg);padding:28px 30px;display:flex;gap:36px;flex-wrap:wrap;align-items:center;box-shadow:var(--shadow-md);position:relative;overflow:hidden}
+  .score-hero::after{content:"";position:absolute;right:-70px;top:-90px;width:300px;height:300px;border-radius:50%;background:radial-gradient(circle,rgba(30,169,124,.35),transparent 70%);pointer-events:none}
+  .score-main{position:relative;z-index:1;display:flex;flex-direction:column;gap:6px}
+  .score-eyebrow{font-family:var(--font-body);font-weight:700;letter-spacing:.12em;font-size:11px;text-transform:uppercase;color:#c9c2e8}
+  .score-figure{display:flex;align-items:baseline;gap:8px}
+  .score-num{font-family:var(--font-display);font-size:4.2rem;font-weight:800;line-height:.85;letter-spacing:-.03em;color:var(--emerald-500);font-variant-numeric:tabular-nums}
+  .score-num.low{color:#e06a6a}
+  .score-num.mid{color:#e0b23b}
+  .score-den{font-family:var(--font-display);font-size:1.2rem;font-weight:700;color:#c9c2e8}
+  .score-label{font-family:var(--font-display);font-size:13px;font-weight:600;color:#fff}
+  .gated-tag{display:inline-block;margin-top:6px;font-size:11px;font-weight:700;color:#ffb4b4;background:rgba(176,58,58,.25);padding:4px 10px;border-radius:999px}
+  .score-subs{position:relative;z-index:1;display:flex;gap:28px;flex-wrap:wrap;margin-left:auto}
+  .score-sub{display:flex;flex-direction:column;gap:4px}
+  .score-sub .sl{font-family:var(--font-display);font-size:10.5px;font-weight:600;color:#c9c2e8;text-transform:uppercase;letter-spacing:.06em}
+  .score-sub .sv{font-family:var(--font-display);font-size:1.7rem;font-weight:800;color:var(--violet-400);line-height:1;font-variant-numeric:tabular-nums}
+
+  /* ── narrative banner ── */
+  .narrative{background:var(--violet-50);border:1px solid var(--violet-300);border-left:4px solid var(--navy);border-radius:var(--radius-md);padding:16px 18px;margin-bottom:20px;font-size:14px;line-height:1.5;color:var(--dark)}
+  .narrative b{color:var(--navy)}
+
+  /* ── results table ── */
+  table.checks{width:100%;border-collapse:collapse}
+  table.checks th{background:var(--ice2);padding:9px 12px;text-align:left;font-size:9.5px;text-transform:uppercase;letter-spacing:.07em;font-weight:700;color:var(--ink-400);border-bottom:1px solid var(--line)}
+  table.checks td{padding:11px 12px;font-size:12.5px;border-bottom:1px solid var(--ice2);color:var(--ink-700);vertical-align:top}
+  table.checks tr:last-child td{border-bottom:none}
+  .chk-title{font-weight:700;color:var(--dark)}
+  .chk-toggle{font-family:var(--font-body);font-size:11px;color:var(--navy);background:none;border:1px solid var(--ink-200);border-radius:6px;padding:4px 9px;cursor:pointer;white-space:nowrap}
+  .chk-toggle:hover{background:var(--ice2)}
+  .chk-raw{display:none;padding:10px 12px;margin:6px 0 0;background:var(--ice);border-radius:8px;font-family:var(--font-mono);font-size:11px;white-space:pre-wrap;word-break:break-word;max-height:280px;overflow:auto;color:var(--ink-600)}
+  .chk-raw.show{display:block}
+
+  .page-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px}
+  .page-tab{font-family:var(--font-body);font-size:11.5px;font-weight:700;color:var(--ink-400);background:var(--ice2);border:1px solid transparent;border-radius:999px;padding:7px 14px;cursor:pointer;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .page-tab.active{background:var(--navy);color:#fff}
+  .page-panel{display:none}
+  .page-panel.show{display:block}
+
+  /* ── prioritized findings ── */
+  .finding{border-left:3px solid var(--ink-200);padding:10px 14px;margin-bottom:8px;border-radius:6px;background:var(--ice)}
+  .finding.critical{border-left-color:#b03a3a;background:var(--danger-100)}
+  .finding.on-page{border-left-color:#8a6a12;background:var(--warning-100)}
+  .finding.content{border-left-color:var(--navy);background:var(--violet-50)}
+  .finding-tag{font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-400)}
+  .finding-title{font-size:13px;font-weight:700;color:var(--dark);margin:2px 0}
+  .finding-detail{font-size:12px;color:var(--ink-600);line-height:1.5}
+  .finding-page{font-size:11px;color:var(--ink-400);margin-top:3px;word-break:break-all}
+
+  .empty{padding:30px;text-align:center;color:var(--ink-400);font-size:13px}
+  .spinner{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  #results{display:none}
+
+  @media(max-width:640px){
+    .head{padding:24px 20px 24px}
+    .wrap{padding:20px 14px 0}
+    .score-hero{flex-direction:column;align-items:flex-start;gap:20px}
+    .score-subs{margin-left:0}
+  }
+
+  @media print{
+    body{background:#fff;padding:0}
+    .head::after,.head::before{display:none}
+    .no-print{display:none !important}
+    .card,.score-hero{box-shadow:none;break-inside:avoid}
+    details.adv{display:none}
+  }
+</style>
+</head>
+<body>
+
+<div class="head">
+  <div class="headnav">
+    <div class="logo">
+      <img class="logo-lockup" src="/brand/logo-horizontal-light.png" alt="Akore Labs">
+      <span class="logo-divider"></span>
+      <div class="logo-sub">GEO On-Page Scanner</div>
+    </div>
+  </div>
+  <div class="eyebrow">Akore Labs · GEO · Layer 1</div>
+  <h1 class="pagetitle">Is this site even crawlable?</h1>
+  <div class="sub">Before reading any citation-rate scores, this checks whether a site is structurally capable of being crawled and cited by AI engines at all — robots.txt rules, bot-specific blocking, noindex signals, structured data, and content specificity.</div>
+</div>
+
+<div class="wrap">
+
+  <div class="card no-print">
+    <div class="card-title">Run a scan</div>
+    <div class="card-caption">No API key required for the core scan — Section 5's narrative summary is the only optional, Claude-powered part.</div>
+    <div class="field">
+      <label for="url-input">Website URL to scan</label>
+      <input id="url-input" type="text" placeholder="example.com" autocomplete="off">
+    </div>
+    <details class="adv">
+      <summary>Advanced — up to 5 additional key pages</summary>
+      <div class="adv-body">
+        <div class="field-hint" style="margin-bottom:12px;">Checked for on-page + content-specificity signals alongside the homepage (relative paths are resolved against the URL above).</div>
+        <div id="extra-pages"></div>
+      </div>
+    </details>
+    <div class="field">
+      <label for="claude-key-input">Claude API key <span style="text-transform:none;font-weight:500;color:var(--ink-400);">(optional)</span></label>
+      <input id="claude-key-input" type="password" placeholder="sk-ant-..." autocomplete="off">
+      <div class="field-hint">Never stored. Used only for this scan, to generate the "hallazgo principal" summary. Leave blank to skip.</div>
+    </div>
+    <div class="err-box" id="err-box"></div>
+    <button class="btn" id="run-btn" onclick="runScan()">Run Scan</button>
+  </div>
+
+  <div class="empty no-print" id="loading" style="display:none;">
+    <span class="spinner" style="border-color:rgba(109,79,224,.25);border-top-color:var(--navy);"></span>
+    <span style="margin-left:8px;">Scanning — checking robots.txt, multiple user-agents, headers, on-page signals and content specificity…</span>
+  </div>
+
+  <div id="results">
+    <div id="narrative-block"></div>
+
+    <div class="score-hero" id="score-hero"></div>
+
+    <div class="row no-print" style="margin:20px 0;">
+      <button class="btn btn-ghost btn-sm" onclick="exportJSON()">⬇ Export JSON</button>
+      <button class="btn btn-ghost btn-sm" onclick="window.print()">⬇ Export PDF</button>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Prioritized findings</div>
+      <div class="card-caption">Critical crawlability issues first, then on-page gaps, then content-specificity notes — mirrors the Plan de Acción por Fases structure.</div>
+      <div id="findings-list"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Section 1 · Crawlability Layer</div>
+      <div class="card-caption">The most important section — this is Layer 1 of the methodology. If this fails, nothing downstream matters yet.</div>
+      <div id="section1-table"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Section 2 · On-Page GEO Signals</div>
+      <div class="card-caption">Homepage plus any additional pages checked.</div>
+      <div class="page-tabs" id="section2-tabs"></div>
+      <div id="section2-panels"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Section 3 · Content Specificity Signals</div>
+      <div class="card-caption">Best-effort heuristics — lower precision than Sections 1-2, treated as directional signal, not a hard pass/fail.</div>
+      <div class="page-tabs" id="section3-tabs"></div>
+      <div id="section3-panels"></div>
+      <div style="margin-top:14px;" id="boilerplate-block"></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function esc(s){return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+
+for (let i = 1; i <= 5; i++) {
+  const div = document.createElement('div');
+  div.className = 'field';
+  div.innerHTML = `<label>Page ${i}</label><input type="text" class="extra-page-input" placeholder="/some-page or https://example.com/some-page">`;
+  document.getElementById('extra-pages').appendChild(div);
+}
+
+let lastResult = null;
+
+async function runScan() {
+  const urlInput = document.getElementById('url-input');
+  const err = document.getElementById('err-box');
+  err.style.display = 'none';
+  const url = urlInput.value.trim();
+  if (!url) { err.textContent = 'Enter a URL to scan.'; err.style.display = 'block'; return; }
+
+  const extraPages = Array.from(document.querySelectorAll('.extra-page-input')).map(i => i.value.trim()).filter(Boolean);
+  const claudeApiKey = document.getElementById('claude-key-input').value.trim();
+
+  const btn = document.getElementById('run-btn');
+  btn.disabled = true;
+  btn.textContent = 'Scanning…';
+  document.getElementById('loading').style.display = 'block';
+  document.getElementById('results').style.display = 'none';
+
+  try {
+    const res = await fetch('/api/scan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url, extraPages, claudeApiKey: claudeApiKey || undefined })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Scan failed.');
+    lastResult = data;
+    renderResults(data);
+  } catch (e) {
+    err.textContent = e.message;
+    err.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Run Scan';
+    document.getElementById('loading').style.display = 'none';
+  }
+}
+
+function scoreClass(n) {
+  if (n >= 70) return '';
+  if (n >= 40) return 'mid';
+  return 'low';
+}
+
+function renderResults(data) {
+  document.getElementById('results').style.display = 'block';
+
+  const narrativeBlock = document.getElementById('narrative-block');
+  if (data.narrative) {
+    narrativeBlock.innerHTML = `<div class="narrative"><b>Hallazgo principal:</b> ${esc(data.narrative)}</div>`;
+  } else if (data.narrativeError) {
+    narrativeBlock.innerHTML = `<div class="narrative" style="border-left-color:#b03a3a;"><b>Claude summary unavailable:</b> ${esc(data.narrativeError)}</div>`;
+  } else {
+    narrativeBlock.innerHTML = '';
+  }
+
+  const s = data.score;
+  const label = s.overall >= 70 ? 'Strong GEO readiness' : s.overall >= 40 ? 'Emerging GEO readiness' : 'Low GEO readiness — Layer 1 needs attention';
+  document.getElementById('score-hero').innerHTML = `
+    <div class="score-main">
+      <div class="score-eyebrow">GEO Technical Readiness Score</div>
+      <div class="score-figure"><span class="score-num ${scoreClass(s.overall)}">${s.overall}</span><span class="score-den">/ 100</span></div>
+      <div class="score-label">${esc(label)}</div>
+      ${s.gated ? `<div class="gated-tag">Score capped — ${s.criticalFailCount} critical crawlability failure${s.criticalFailCount === 1 ? '' : 's'} gate the total</div>` : ''}
+    </div>
+    <div class="score-subs">
+      <div class="score-sub"><div class="sl">Crawlability</div><div class="sv">${s.sections.crawlability ?? '—'}</div></div>
+      <div class="score-sub"><div class="sl">On-Page</div><div class="sv">${s.sections.onPage ?? '—'}</div></div>
+      <div class="score-sub"><div class="sl">Content Specificity</div><div class="sv">${s.sections.contentSpecificity ?? '—'}</div></div>
+    </div>`;
+
+  const findingsList = document.getElementById('findings-list');
+  if (!data.prioritizedFindings.length) {
+    findingsList.innerHTML = '<div class="empty">No issues found — every check passed.</div>';
+  } else {
+    findingsList.innerHTML = data.prioritizedFindings.map(f => `
+      <div class="finding ${f.priority}">
+        <div class="finding-tag">${esc(f.section)}</div>
+        <div class="finding-title">${esc(f.title)}</div>
+        <div class="finding-detail">${esc(f.detail)}</div>
+        ${f.page ? `<div class="finding-page">${esc(f.page)}</div>` : ''}
+      </div>`).join('');
+  }
+
+  document.getElementById('section1-table').innerHTML = renderChecksTable(data.section1.checks, 's1');
+
+  const tabs2 = document.getElementById('section2-tabs');
+  const panels2 = document.getElementById('section2-panels');
+  tabs2.innerHTML = data.section2.pages.map((p, i) => `<button class="page-tab ${i === 0 ? 'active' : ''}" onclick="switchTab('s2', ${i})">${esc(shortUrl(p.url))}</button>`).join('');
+  panels2.innerHTML = data.section2.pages.map((p, i) => `<div class="page-panel ${i === 0 ? 'show' : ''}" id="s2-panel-${i}">${renderChecksTable(p.checks, 's2-' + i)}</div>`).join('');
+
+  const tabs3 = document.getElementById('section3-tabs');
+  const panels3 = document.getElementById('section3-panels');
+  tabs3.innerHTML = data.section3.perPage.map((p, i) => `<button class="page-tab ${i === 0 ? 'active' : ''}" onclick="switchTab('s3', ${i})">${esc(shortUrl(p.url))}</button>`).join('');
+  panels3.innerHTML = data.section3.perPage.map((p, i) => `<div class="page-panel ${i === 0 ? 'show' : ''}" id="s3-panel-${i}">${renderChecksTable(p.checks, 's3-' + i)}</div>`).join('');
+
+  const bp = data.section3.boilerplate;
+  document.getElementById('boilerplate-block').innerHTML = `
+    <table class="checks"><thead><tr><th>Check</th><th>Status</th><th>Detail</th></tr></thead><tbody>
+      <tr><td class="chk-title">${esc(bp.title)}</td><td><span class="badge badge-${bp.status}">${bp.status}</span></td><td>${esc(bp.detail)}</td></tr>
+    </tbody></table>`;
+}
+
+function shortUrl(u) {
+  try { const p = new URL(u); return p.pathname === '/' ? p.hostname : p.hostname + p.pathname; } catch { return u; }
+}
+
+function renderChecksTable(checks, prefix) {
+  return `<table class="checks"><thead><tr><th>Check</th><th>Status</th><th>Detail</th><th></th></tr></thead><tbody>
+    ${checks.map((c, i) => `
+      <tr>
+        <td class="chk-title">${esc(c.title)}</td>
+        <td><span class="badge badge-${c.status}">${c.status}</span></td>
+        <td>${esc(c.detail)}</td>
+        <td><button class="chk-toggle no-print" onclick="toggleRaw('${prefix}-${i}')">Details</button></td>
+      </tr>
+      <tr><td colspan="4" style="padding:0;border:none;"><pre class="chk-raw" id="raw-${prefix}-${i}">${esc(JSON.stringify(c.raw, null, 2))}</pre></td></tr>
+    `).join('')}
+  </tbody></table>`;
+}
+
+function toggleRaw(id) {
+  document.getElementById('raw-' + id).classList.toggle('show');
+}
+
+function switchTab(section, idx) {
+  const tabsEl = document.getElementById(section + '-tabs');
+  const panelsEl = document.getElementById(section + '-panels');
+  Array.from(tabsEl.children).forEach((btn, i) => btn.classList.toggle('active', i === idx));
+  Array.from(panelsEl.children).forEach((panel, i) => panel.classList.toggle('show', i === idx));
+}
+
+function exportJSON() {
+  if (!lastResult) return;
+  const blob = new Blob([JSON.stringify(lastResult, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const host = (() => { try { return new URL(lastResult.input.url).hostname; } catch { return 'scan'; } })();
+  a.download = `geo-scan_${host}_${lastResult.scannedAt.slice(0, 10)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+</script>
+</body>
+</html>
