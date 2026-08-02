@@ -83,16 +83,14 @@
   .score-sub .sl{font-family:var(--font-display);font-size:10.5px;font-weight:600;color:#c9c2e8;text-transform:uppercase;letter-spacing:.06em}
   .score-sub .sv{font-family:var(--font-display);font-size:1.7rem;font-weight:800;color:var(--violet-400);line-height:1;font-variant-numeric:tabular-nums}
 
-  /* ── narrative banner ── */
-  .narrative{background:var(--violet-50);border:1px solid var(--violet-300);border-left:4px solid var(--navy);border-radius:var(--radius-md);padding:16px 18px;margin-bottom:20px;font-size:14px;line-height:1.5;color:var(--dark)}
-  .narrative b{color:var(--navy)}
-
   /* ── results table ── */
   table.checks{width:100%;border-collapse:collapse}
   table.checks th{background:var(--ice2);padding:9px 12px;text-align:left;font-size:9.5px;text-transform:uppercase;letter-spacing:.07em;font-weight:700;color:var(--ink-400);border-bottom:1px solid var(--line)}
   table.checks td{padding:11px 12px;font-size:12.5px;border-bottom:1px solid var(--ice2);color:var(--ink-700);vertical-align:top}
   table.checks tr:last-child td{border-bottom:none}
   .chk-title{font-weight:700;color:var(--dark)}
+  .how-to-fix{margin-top:6px;font-size:11.5px;line-height:1.5;color:var(--emerald-700);background:var(--emerald-50);border-radius:6px;padding:6px 9px}
+  .how-to-fix b{color:var(--emerald-700)}
   .chk-toggle{font-family:var(--font-body);font-size:11px;color:var(--navy);background:none;border:1px solid var(--ink-200);border-radius:6px;padding:4px 9px;cursor:pointer;white-space:nowrap}
   .chk-toggle:hover{background:var(--ice2)}
   .chk-raw{display:none;padding:10px 12px;margin:6px 0 0;background:var(--ice);border-radius:8px;font-family:var(--font-mono);font-size:11px;white-space:pre-wrap;word-break:break-word;max-height:280px;overflow:auto;color:var(--ink-600)}
@@ -108,6 +106,7 @@
   .finding{border-left:3px solid var(--ink-200);padding:10px 14px;margin-bottom:8px;border-radius:6px;background:var(--ice)}
   .finding.critical{border-left-color:#b03a3a;background:var(--danger-100)}
   .finding.on-page{border-left-color:#8a6a12;background:var(--warning-100)}
+  .finding.agentic{border-left-color:var(--emerald-700);background:var(--emerald-50)}
   .finding.content{border-left-color:var(--navy);background:var(--violet-50)}
   .finding-tag{font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-400)}
   .finding-title{font-size:13px;font-weight:700;color:var(--dark);margin:2px 0}
@@ -147,14 +146,14 @@
   </div>
   <div class="eyebrow">Akore Labs · GEO · Layer 1</div>
   <h1 class="pagetitle">Is this site even crawlable?</h1>
-  <div class="sub">Before reading any citation-rate scores, this checks whether a site is structurally capable of being crawled and cited by AI engines at all — robots.txt rules, bot-specific blocking, noindex signals, structured data, and content specificity.</div>
+  <div class="sub">Before reading any citation-rate scores, this checks whether a site is structurally capable of being crawled and cited by AI engines at all — robots.txt rules, bot-specific blocking, noindex signals, structured data, agentic-browsing accessibility, and content specificity.</div>
 </div>
 
 <div class="wrap">
 
   <div class="card no-print">
     <div class="card-title">Run a scan</div>
-    <div class="card-caption">No API key required for the core scan — Section 5's narrative summary is the only optional, Claude-powered part.</div>
+    <div class="card-caption">No API key required — every check runs deterministically, server-side.</div>
     <div class="field">
       <label for="url-input">Website URL to scan</label>
       <input id="url-input" type="text" placeholder="example.com" autocomplete="off">
@@ -162,15 +161,10 @@
     <details class="adv">
       <summary>Advanced — up to 5 additional key pages</summary>
       <div class="adv-body">
-        <div class="field-hint" style="margin-bottom:12px;">Checked for on-page + content-specificity signals alongside the homepage (relative paths are resolved against the URL above).</div>
+        <div class="field-hint" style="margin-bottom:12px;">Checked for on-page, agentic-browsing, and content-specificity signals alongside the homepage (relative paths are resolved against the URL above).</div>
         <div id="extra-pages"></div>
       </div>
     </details>
-    <div class="field">
-      <label for="claude-key-input">Claude API key <span style="text-transform:none;font-weight:500;color:var(--ink-400);">(optional)</span></label>
-      <input id="claude-key-input" type="password" placeholder="sk-ant-..." autocomplete="off">
-      <div class="field-hint">Never stored. Used only for this scan, to generate the "hallazgo principal" summary. Leave blank to skip.</div>
-    </div>
     <div class="err-box" id="err-box"></div>
     <button class="btn" id="run-btn" onclick="runScan()">Run Scan</button>
   </div>
@@ -181,8 +175,6 @@
   </div>
 
   <div id="results">
-    <div id="narrative-block"></div>
-
     <div class="score-hero" id="score-hero"></div>
 
     <div class="row no-print" style="margin:20px 0;">
@@ -207,6 +199,13 @@
       <div class="card-caption">Homepage plus any additional pages checked.</div>
       <div class="page-tabs" id="section2-tabs"></div>
       <div id="section2-panels"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Section 4 · Agentic Browsing / AI Agent Accessibility</div>
+      <div class="card-caption">Structural checks from Chrome Lighthouse's new "Agentic Browsing" category — main-landmark presence, strict heading order, form labeling, and a composite accessibility-tree health estimate. Achievable via static HTML parsing only; Cumulative Layout Shift and WebMCP validation need a real rendered browser and aren't attempted here — cross-check those with Google PageSpeed Insights.</div>
+      <div class="page-tabs" id="section4-tabs"></div>
+      <div id="section4-panels"></div>
     </div>
 
     <div class="card">
@@ -240,7 +239,6 @@ async function runScan() {
   if (!url) { err.textContent = 'Enter a URL to scan.'; err.style.display = 'block'; return; }
 
   const extraPages = Array.from(document.querySelectorAll('.extra-page-input')).map(i => i.value.trim()).filter(Boolean);
-  const claudeApiKey = document.getElementById('claude-key-input').value.trim();
 
   const btn = document.getElementById('run-btn');
   btn.disabled = true;
@@ -252,7 +250,7 @@ async function runScan() {
     const res = await fetch('/api/scan', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url, extraPages, claudeApiKey: claudeApiKey || undefined })
+      body: JSON.stringify({ url, extraPages })
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Scan failed.');
@@ -277,15 +275,6 @@ function scoreClass(n) {
 function renderResults(data) {
   document.getElementById('results').style.display = 'block';
 
-  const narrativeBlock = document.getElementById('narrative-block');
-  if (data.narrative) {
-    narrativeBlock.innerHTML = `<div class="narrative"><b>Hallazgo principal:</b> ${esc(data.narrative)}</div>`;
-  } else if (data.narrativeError) {
-    narrativeBlock.innerHTML = `<div class="narrative" style="border-left-color:#b03a3a;"><b>Claude summary unavailable:</b> ${esc(data.narrativeError)}</div>`;
-  } else {
-    narrativeBlock.innerHTML = '';
-  }
-
   const s = data.score;
   const label = s.overall >= 70 ? 'Strong GEO readiness' : s.overall >= 40 ? 'Emerging GEO readiness' : 'Low GEO readiness — Layer 1 needs attention';
   document.getElementById('score-hero').innerHTML = `
@@ -298,6 +287,7 @@ function renderResults(data) {
     <div class="score-subs">
       <div class="score-sub"><div class="sl">Crawlability</div><div class="sv">${s.sections.crawlability ?? '—'}</div></div>
       <div class="score-sub"><div class="sl">On-Page</div><div class="sv">${s.sections.onPage ?? '—'}</div></div>
+      <div class="score-sub"><div class="sl">Agentic Browsing</div><div class="sv">${s.sections.agenticBrowsing ?? '—'}</div></div>
       <div class="score-sub"><div class="sl">Content Specificity</div><div class="sv">${s.sections.contentSpecificity ?? '—'}</div></div>
     </div>`;
 
@@ -311,6 +301,7 @@ function renderResults(data) {
         <div class="finding-title">${esc(f.title)}</div>
         <div class="finding-detail">${esc(f.detail)}</div>
         ${f.page ? `<div class="finding-page">${esc(f.page)}</div>` : ''}
+        ${f.howToFix ? `<div class="how-to-fix"><b>How to fix:</b> ${esc(f.howToFix)}</div>` : ''}
       </div>`).join('');
   }
 
@@ -321,6 +312,11 @@ function renderResults(data) {
   tabs2.innerHTML = data.section2.pages.map((p, i) => `<button class="page-tab ${i === 0 ? 'active' : ''}" onclick="switchTab('s2', ${i})">${esc(shortUrl(p.url))}</button>`).join('');
   panels2.innerHTML = data.section2.pages.map((p, i) => `<div class="page-panel ${i === 0 ? 'show' : ''}" id="s2-panel-${i}">${renderChecksTable(p.checks, 's2-' + i)}</div>`).join('');
 
+  const tabs4 = document.getElementById('section4-tabs');
+  const panels4 = document.getElementById('section4-panels');
+  tabs4.innerHTML = data.section4.pages.map((p, i) => `<button class="page-tab ${i === 0 ? 'active' : ''}" onclick="switchTab('s4', ${i})">${esc(shortUrl(p.url))}</button>`).join('');
+  panels4.innerHTML = data.section4.pages.map((p, i) => `<div class="page-panel ${i === 0 ? 'show' : ''}" id="s4-panel-${i}">${renderChecksTable(p.checks, 's4-' + i)}</div>`).join('');
+
   const tabs3 = document.getElementById('section3-tabs');
   const panels3 = document.getElementById('section3-panels');
   tabs3.innerHTML = data.section3.perPage.map((p, i) => `<button class="page-tab ${i === 0 ? 'active' : ''}" onclick="switchTab('s3', ${i})">${esc(shortUrl(p.url))}</button>`).join('');
@@ -329,7 +325,7 @@ function renderResults(data) {
   const bp = data.section3.boilerplate;
   document.getElementById('boilerplate-block').innerHTML = `
     <table class="checks"><thead><tr><th>Check</th><th>Status</th><th>Detail</th></tr></thead><tbody>
-      <tr><td class="chk-title">${esc(bp.title)}</td><td><span class="badge badge-${bp.status}">${bp.status}</span></td><td>${esc(bp.detail)}</td></tr>
+      <tr><td class="chk-title">${esc(bp.title)}</td><td><span class="badge badge-${bp.status}">${bp.status}</span></td><td>${esc(bp.detail)}${bp.howToFix ? `<div class="how-to-fix"><b>How to fix:</b> ${esc(bp.howToFix)}</div>` : ''}</td></tr>
     </tbody></table>`;
 }
 
@@ -343,7 +339,7 @@ function renderChecksTable(checks, prefix) {
       <tr>
         <td class="chk-title">${esc(c.title)}</td>
         <td><span class="badge badge-${c.status}">${c.status}</span></td>
-        <td>${esc(c.detail)}</td>
+        <td>${esc(c.detail)}${c.howToFix ? `<div class="how-to-fix"><b>How to fix:</b> ${esc(c.howToFix)}</div>` : ''}</td>
         <td><button class="chk-toggle no-print" onclick="toggleRaw('${prefix}-${i}')">Details</button></td>
       </tr>
       <tr><td colspan="4" style="padding:0;border:none;"><pre class="chk-raw" id="raw-${prefix}-${i}">${esc(JSON.stringify(c.raw, null, 2))}</pre></td></tr>
