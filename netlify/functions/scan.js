@@ -14,9 +14,9 @@ const USER_AGENTS = {
 
 const FETCH_TIMEOUT_MS = 9000;
 
-async function fetchSafe(url, uaString) {
+async function fetchSafe(url, uaString, timeoutMs = FETCH_TIMEOUT_MS) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   const started = Date.now();
   try {
     const res = await fetch(url, {
@@ -178,25 +178,45 @@ async function checkSitemap(origin) {
   return { id: 'sitemap', title: 'sitemap.xml', status, detail, howToFix, raw: { url: sitemapUrl, urlCount, isIndex } };
 }
 
-function checkResponseTime(homepageFetch) {
-  const ms = homepageFetch.ms;
+// Deliberately measured by its own isolated fetch (see main handler), not reused from the
+// multi-user-agent test or bundled into the same parallel wave as robots.txt/sitemap/extra pages.
+// Running all of those concurrently against the same origin creates a burst of simultaneous
+// connections no real single visitor or crawler would ever generate — enough to trip rate
+// limiting or simply queue behind each other on modest hosting, which was producing wildly
+// inconsistent readings for the same site between scans. One clean, uncontended request is a
+// truer (though still single-sample) signal.
+function checkResponseTime(timingFetch) {
+  const ms = timingFetch.ms;
   const speedFix = 'Check for unoptimized images, unminified CSS/JS, or missing caching — consider running the page through Google PageSpeed Insights for a detailed breakdown of exactly what\'s slow.';
-  if (!homepageFetch.ok) {
-    return { id: 'response-time', title: 'Response time', status: 'FAIL', detail: `Homepage did not respond within ${Math.round(ms / 1000)}s (${homepageFetch.error || 'no response'}) — treat this as a hard crawlability failure, not just a slow page.`, howToFix: speedFix, raw: { ms, error: homepageFetch.error } };
+  const sampleNote = 'Measured as a single isolated request, with nothing else contending for the origin at the same time — more trustworthy than a request fired alongside a burst of others, but still just one sample. Treat it as a directional signal, not a precise measurement; for an authoritative, repeated-sample breakdown, cross-check with Google PageSpeed Insights.';
+
+  if (!timingFetch.ok) {
+    return {
+      id: 'response-time',
+      title: 'Response time (single-request sample)',
+      status: 'FAIL',
+      detail: `Homepage did not respond within ${Math.round(ms / 1000)}s (${timingFetch.error || 'no response'}), even in isolation with nothing else contending for the server. Treat this as a hard crawlability failure, not just a slow page.`,
+      howToFix: speedFix,
+      raw: { ms, error: timingFetch.error }
+    };
   }
-  let status = 'PASS';
-  let detail = `Homepage responded in ${ms}ms.`;
-  let howToFix;
-  if (ms > 3000) {
-    status = 'FAIL';
-    detail = `Homepage took ${ms}ms to respond — slow enough to risk crawl budget and timeouts from some bots.`;
-    howToFix = speedFix;
-  } else if (ms > 1200) {
-    status = 'WARNING';
-    detail = `Homepage took ${ms}ms to respond — on the slow side.`;
-    howToFix = speedFix;
-  }
-  return { id: 'response-time', title: 'Response time', status, detail, howToFix, raw: { ms } };
+
+  // Slow-but-reachable deliberately caps at WARNING, never FAIL — a single timing sample
+  // shouldn't be able to gate the whole crawlability score the way a genuine block or a fully
+  // unreachable homepage does. FAIL above is reserved for the site not responding at all.
+  const status = ms > 2000 ? 'WARNING' : 'PASS';
+  const detail = status === 'WARNING'
+    ? `Homepage took ${ms}ms to respond — on the slow side. ${sampleNote}`
+    : `Homepage responded in ${ms}ms. ${sampleNote}`;
+
+  return {
+    id: 'response-time',
+    title: 'Response time (single-request sample)',
+    status,
+    detail,
+    howToFix: status === 'WARNING' ? speedFix : undefined,
+    raw: { ms }
+  };
 }
 
 // ── Section 2: On-page GEO signals ──
@@ -533,10 +553,17 @@ export default async (request) => {
     : [];
 
   try {
-    // Everything runs as ONE parallel wave — robots.txt, sitemap.xml, the 5-user-agent homepage
-    // test (whose browser-UA response is reused as the homepage source below, so the homepage is
-    // never fetched twice), and every extra page. Total wall-clock is bounded by the slowest
-    // single request, not the sum of them, which matters given Netlify's function time limit.
+    // Response time is measured FIRST and ALONE — awaited by itself before anything else touches
+    // the origin. Bundling it into the parallel wave below (as this used to do) meant it was
+    // timed while 7 other requests hit the same server simultaneously, which is enough to trip
+    // rate limiting or just queue on modest hosting — producing wildly inconsistent readings for
+    // the same site between scans. This costs real wall-clock time, deliberately: accuracy here
+    // matters more than shaving seconds off the scan.
+    const timingFetch = await fetchSafe(homepageUrl, USER_AGENTS.browser.ua);
+
+    // Everything else runs as ONE parallel wave — robots.txt, sitemap.xml, the 5-user-agent
+    // homepage test (whose browser-UA response is reused as the homepage source below, so the
+    // homepage's HTML is never fetched twice), and every extra page.
     const [robotsResult, sitemapResult, multiUA, extraPageFetches] = await Promise.all([
       checkRobots(origin),
       checkSitemap(origin),
@@ -555,14 +582,14 @@ export default async (request) => {
         checkXRobotsTag(homepageFetch.headers),
         checkNoindexMeta($home),
         sitemapResult,
-        checkResponseTime(homepageFetch)
+        checkResponseTime(timingFetch)
       );
     } else {
       // Homepage never responded (timeout, DNS failure, connection refused, etc). That is itself
       // the most severe possible Layer-1 finding — report it as one, rather than erroring the
       // whole scan and telling the user nothing. X-Robots-Tag / noindex genuinely cannot be
       // determined with no page fetched, so they're omitted rather than falsely marked PASS.
-      section1Checks.push(multiUA.check, sitemapResult, checkResponseTime(homepageFetch));
+      section1Checks.push(multiUA.check, sitemapResult, checkResponseTime(timingFetch));
     }
 
     // Section 2 + 3 source pages: homepage (if it loaded) + any extra pages that loaded
