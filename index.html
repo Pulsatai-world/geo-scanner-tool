@@ -268,24 +268,30 @@ async function runScan() {
   document.getElementById('results').style.display = 'none';
   updateLoadingText();
 
-  const jobId = (crypto.randomUUID ? crypto.randomUUID() : (Date.now().toString(36) + Math.random().toString(36).slice(2)));
-
+  let jobId;
   try {
-    // Background function — the platform returns immediately on invocation and the actual scan
-    // keeps running server-side for as long as it needs, unconstrained by a regular function's
-    // ~10s execution ceiling. Progress/results are read separately via polling below.
-    await fetch('/api/run-scan', {
+    // start-scan is a regular (synchronous) function that writes the job's initial "running"
+    // record itself and only then triggers the actual background scan — by the time this
+    // resolves, scan-status is guaranteed to have something to poll for. (An earlier version had
+    // the client trigger the background function directly and start polling immediately, which
+    // raced against the background function's own startup — background functions can have real
+    // queueing/cold-start delay before their code runs, and that race showed up in practice as a
+    // premature "could not start the scan" error even though the scan would have gone on fine.)
+    const res = await fetch('/api/start-scan', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ jobId, url, extraPages })
+      body: JSON.stringify({ url, extraPages })
     });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Could not start the scan.');
+    jobId = data.jobId;
   } catch (e) {
-    showError('Could not start the scan: ' + e.message);
+    showError(e.message);
     setScanningUI(false);
     return;
   }
 
-  pollScanStatus(jobId, 8);
+  pollScanStatus(jobId, 5);
 }
 
 async function pollScanStatus(jobId, graceRetriesLeft) {
@@ -295,12 +301,13 @@ async function pollScanStatus(jobId, graceRetriesLeft) {
     const data = await res.json();
 
     if (data.status === 'not_found') {
-      // The background function may not have written its first status yet — keep polling
-      // briefly instead of treating that startup race as a real failure.
+      // start-scan guarantees this record exists by the time it responds, so this should be
+      // rare — a small safety net for Blobs read-after-write lag across function instances,
+      // not the primary defense against the startup race anymore.
       if (graceRetriesLeft > 0) {
-        pollTimer = setTimeout(() => pollScanStatus(jobId, graceRetriesLeft - 1), 700);
+        pollTimer = setTimeout(() => pollScanStatus(jobId, graceRetriesLeft - 1), 500);
       } else {
-        showError('Could not start the scan — please try again.');
+        showError('Lost track of the scan in progress — please try again.');
         setScanningUI(false);
       }
       return;
