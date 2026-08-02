@@ -2,6 +2,11 @@
   publish = "."
 
 [[redirects]]
-  from = "/api/scan"
-  to = "/.netlify/functions/scan"
+  from = "/api/run-scan"
+  to = "/.netlify/functions/run-scan-background"
+  status = 200
+
+[[redirects]]
+  from = "/api/scan-status"
+  to = "/.netlify/functions/scan-status"
   status = 200

@@ -178,13 +178,16 @@ async function checkSitemap(origin) {
   return { id: 'sitemap', title: 'sitemap.xml', status, detail, howToFix, raw: { url: sitemapUrl, urlCount, isIndex } };
 }
 
-// Deliberately measured by its own isolated fetch (see main handler), not reused from the
+// Deliberately measured by its own isolated fetch (see runScan below), not reused from the
 // multi-user-agent test or bundled into the same parallel wave as robots.txt/sitemap/extra pages.
 // Running all of those concurrently against the same origin creates a burst of simultaneous
 // connections no real single visitor or crawler would ever generate — enough to trip rate
 // limiting or simply queue behind each other on modest hosting, which was producing wildly
 // inconsistent readings for the same site between scans. One clean, uncontended request is a
-// truer (though still single-sample) signal.
+// truer (though still single-sample) signal. This is why the scan now runs as a background
+// function — the isolated fetch plus the rest of the pipeline can genuinely take longer than a
+// regular synchronous function's ~10s execution ceiling on a slow site, and a slow site is
+// exactly the case this check needs to report honestly rather than crash on.
 function checkResponseTime(timingFetch) {
   const ms = timingFetch.ms;
   const speedFix = 'Check for unoptimized images, unminified CSS/JS, or missing caching — consider running the page through Google PageSpeed Insights for a detailed breakdown of exactly what\'s slow.';
@@ -525,105 +528,88 @@ function buildPrioritizedFindings(section1Checks, section2Pages, section4Pages, 
   return findings.sort((a, b) => order[a.priority] - order[b.priority]);
 }
 
-// ── Main handler ──
+// ── Entry point ──
+// Runs the full scan pipeline and returns the result object, or throws on a genuinely invalid
+// request (bad URL). Kept independent of any HTTP/Response wrapping so it can be driven by a
+// background function (see run-scan-background.js) instead of a synchronous request/response
+// cycle — this scan can legitimately take longer than a regular function's execution ceiling on
+// a slow site, and a slow site is exactly the case this tool needs to diagnose, not crash on.
 
-export default async (request) => {
-  if (request.method !== 'POST') {
-    return new Response(JSON.stringify({ error: 'Method Not Allowed' }), { status: 405, headers: { 'Content-Type': 'application/json' } });
-  }
-
-  let body;
-  try {
-    body = await request.json();
-  } catch {
-    return new Response(JSON.stringify({ error: 'Invalid JSON body' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
-  }
-
-  let parsed;
-  try {
-    parsed = normalizeUrl(body.url);
-  } catch {
-    return new Response(JSON.stringify({ error: 'Invalid URL' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
-  }
+export async function runScan({ url, extraPages }) {
+  const parsed = normalizeUrl(url);
   const origin = parsed.origin;
   const homepageUrl = parsed.href;
 
-  const extraPages = Array.isArray(body.extraPages)
-    ? body.extraPages.filter(Boolean).slice(0, 5).map(p => { try { return new URL(p, origin).href; } catch { return null; } }).filter(Boolean)
+  const cleanExtraPages = Array.isArray(extraPages)
+    ? extraPages.filter(Boolean).slice(0, 5).map(p => { try { return new URL(p, origin).href; } catch { return null; } }).filter(Boolean)
     : [];
 
-  try {
-    // Response time is measured FIRST and ALONE — awaited by itself before anything else touches
-    // the origin. Bundling it into the parallel wave below (as this used to do) meant it was
-    // timed while 7 other requests hit the same server simultaneously, which is enough to trip
-    // rate limiting or just queue on modest hosting — producing wildly inconsistent readings for
-    // the same site between scans. This costs real wall-clock time, deliberately: accuracy here
-    // matters more than shaving seconds off the scan.
-    const timingFetch = await fetchSafe(homepageUrl, USER_AGENTS.browser.ua);
+  // Response time is measured FIRST and ALONE — awaited by itself before anything else touches
+  // the origin. Bundling it into the parallel wave below meant it was timed while 7 other
+  // requests hit the same server simultaneously, which is enough to trip rate limiting or just
+  // queue on modest hosting — producing wildly inconsistent readings for the same site between
+  // scans. This costs real wall-clock time, deliberately: accuracy here matters more than
+  // shaving seconds off the scan.
+  const timingFetch = await fetchSafe(homepageUrl, USER_AGENTS.browser.ua);
 
-    // Everything else runs as ONE parallel wave — robots.txt, sitemap.xml, the 5-user-agent
-    // homepage test (whose browser-UA response is reused as the homepage source below, so the
-    // homepage's HTML is never fetched twice), and every extra page.
-    const [robotsResult, sitemapResult, multiUA, extraPageFetches] = await Promise.all([
-      checkRobots(origin),
-      checkSitemap(origin),
-      checkMultiUA(homepageUrl),
-      Promise.all(extraPages.map(async u => ({ url: u, ...(await fetchSafe(u, USER_AGENTS.browser.ua)) })))
-    ]);
+  // Everything else runs as ONE parallel wave — robots.txt, sitemap.xml, the 5-user-agent
+  // homepage test (whose browser-UA response is reused as the homepage source below, so the
+  // homepage's HTML is never fetched twice), and every extra page.
+  const [robotsResult, sitemapResult, multiUA, extraPageFetches] = await Promise.all([
+    checkRobots(origin),
+    checkSitemap(origin),
+    checkMultiUA(homepageUrl),
+    Promise.all(cleanExtraPages.map(async u => ({ url: u, ...(await fetchSafe(u, USER_AGENTS.browser.ua)) })))
+  ]);
 
-    const homepageFetch = multiUA.browserFetch;
-    const section1Checks = [robotsResult];
+  const homepageFetch = multiUA.browserFetch;
+  const section1Checks = [robotsResult];
 
-    let $home = null;
-    if (homepageFetch.ok) {
-      $home = cheerio.load(homepageFetch.text);
-      section1Checks.push(
-        multiUA.check,
-        checkXRobotsTag(homepageFetch.headers),
-        checkNoindexMeta($home),
-        sitemapResult,
-        checkResponseTime(timingFetch)
-      );
-    } else {
-      // Homepage never responded (timeout, DNS failure, connection refused, etc). That is itself
-      // the most severe possible Layer-1 finding — report it as one, rather than erroring the
-      // whole scan and telling the user nothing. X-Robots-Tag / noindex genuinely cannot be
-      // determined with no page fetched, so they're omitted rather than falsely marked PASS.
-      section1Checks.push(multiUA.check, sitemapResult, checkResponseTime(timingFetch));
-    }
-
-    // Section 2 + 3 source pages: homepage (if it loaded) + any extra pages that loaded
-    const pageFetches = [
-      { url: homepageUrl, html: homepageFetch.text, ok: homepageFetch.ok, status: homepageFetch.status },
-      ...extraPageFetches.map(p => ({ url: p.url, html: p.text, ok: p.ok, status: p.status }))
-    ];
-
-    const validPages = pageFetches.filter(p => p.ok && p.html);
-    const skippedPages = pageFetches.filter(p => !p.ok).map(p => ({ url: p.url, status: p.status }));
-
-    const analyzedPages = validPages.map(p => analyzePage(p.url, p.html));
-    const section3 = analyzeContentSpecificity(analyzedPages);
-
-    const section2Pages = analyzedPages.map(p => ({ url: p.url, title: p.title, metaDescription: p.metaDescription, schemaTypes: p.schemaTypes, headingInfo: p.headingInfo, canonical: p.canonical, og: p.og, images: p.images, wordCount: p.wordCount, checks: p.checks }));
-    const section4Pages = analyzedPages.map(p => ({ url: p.url, checks: p.agenticChecks }));
-
-    const score = computeScore(section1Checks, section2Pages, section4Pages, section3);
-    const prioritizedFindings = buildPrioritizedFindings(section1Checks, section2Pages, section4Pages, section3);
-
-    const result = {
-      scannedAt: new Date().toISOString(),
-      input: { url: homepageUrl, extraPages },
-      skippedPages,
-      score,
-      section1: { title: 'Crawlability Layer', checks: section1Checks },
-      section2: { title: 'On-Page GEO Signals', pages: section2Pages },
-      section4: { title: 'Agentic Browsing / AI Agent Accessibility', pages: section4Pages },
-      section3: { title: 'Content Specificity Signals', perPage: section3.perPage.map(p => ({ url: p.url, checks: p.checks })), boilerplate: section3.boilerplateCheck },
-      prioritizedFindings
-    };
-
-    return new Response(JSON.stringify(result), { status: 200, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } });
-  } catch (err) {
-    return new Response(JSON.stringify({ error: err.message || 'Unexpected error running scan' }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+  let $home = null;
+  if (homepageFetch.ok) {
+    $home = cheerio.load(homepageFetch.text);
+    section1Checks.push(
+      multiUA.check,
+      checkXRobotsTag(homepageFetch.headers),
+      checkNoindexMeta($home),
+      sitemapResult,
+      checkResponseTime(timingFetch)
+    );
+  } else {
+    // Homepage never responded (timeout, DNS failure, connection refused, etc). That is itself
+    // the most severe possible Layer-1 finding — report it as one, rather than erroring the
+    // whole scan and telling the user nothing. X-Robots-Tag / noindex genuinely cannot be
+    // determined with no page fetched, so they're omitted rather than falsely marked PASS.
+    section1Checks.push(multiUA.check, sitemapResult, checkResponseTime(timingFetch));
   }
-};
+
+  // Section 2 + 3 + 4 source pages: homepage (if it loaded) + any extra pages that loaded
+  const pageFetches = [
+    { url: homepageUrl, html: homepageFetch.text, ok: homepageFetch.ok, status: homepageFetch.status },
+    ...extraPageFetches.map(p => ({ url: p.url, html: p.text, ok: p.ok, status: p.status }))
+  ];
+
+  const validPages = pageFetches.filter(p => p.ok && p.html);
+  const skippedPages = pageFetches.filter(p => !p.ok).map(p => ({ url: p.url, status: p.status }));
+
+  const analyzedPages = validPages.map(p => analyzePage(p.url, p.html));
+  const section3 = analyzeContentSpecificity(analyzedPages);
+
+  const section2Pages = analyzedPages.map(p => ({ url: p.url, title: p.title, metaDescription: p.metaDescription, schemaTypes: p.schemaTypes, headingInfo: p.headingInfo, canonical: p.canonical, og: p.og, images: p.images, wordCount: p.wordCount, checks: p.checks }));
+  const section4Pages = analyzedPages.map(p => ({ url: p.url, checks: p.agenticChecks }));
+
+  const score = computeScore(section1Checks, section2Pages, section4Pages, section3);
+  const prioritizedFindings = buildPrioritizedFindings(section1Checks, section2Pages, section4Pages, section3);
+
+  return {
+    scannedAt: new Date().toISOString(),
+    input: { url: homepageUrl, extraPages: cleanExtraPages },
+    skippedPages,
+    score,
+    section1: { title: 'Crawlability Layer', checks: section1Checks },
+    section2: { title: 'On-Page GEO Signals', pages: section2Pages },
+    section4: { title: 'Agentic Browsing / AI Agent Accessibility', pages: section4Pages },
+    section3: { title: 'Content Specificity Signals', perPage: section3.perPage.map(p => ({ url: p.url, checks: p.checks })), boilerplate: section3.boilerplateCheck },
+    prioritizedFindings
+  };
+}

@@ -171,7 +171,7 @@
 
   <div class="empty no-print" id="loading" style="display:none;">
     <span class="spinner" style="border-color:rgba(109,79,224,.25);border-top-color:var(--navy);"></span>
-    <span style="margin-left:8px;">Scanning — checking robots.txt, multiple user-agents, headers, on-page signals and content specificity…</span>
+    <span id="loading-text" style="margin-left:8px;">Scanning…</span>
   </div>
 
   <div id="results">
@@ -230,39 +230,105 @@ for (let i = 1; i <= 5; i++) {
 }
 
 let lastResult = null;
+let pollTimer = null;
+let scanStartedAt = null;
+
+function setScanningUI(isScanning) {
+  const btn = document.getElementById('run-btn');
+  btn.disabled = isScanning;
+  btn.textContent = isScanning ? 'Scanning…' : 'Run Scan';
+  document.getElementById('loading').style.display = isScanning ? 'block' : 'none';
+}
+
+function showError(message) {
+  const err = document.getElementById('err-box');
+  err.textContent = message;
+  err.style.display = 'block';
+}
+
+function updateLoadingText() {
+  const el = document.getElementById('loading-text');
+  if (!el || !scanStartedAt) return;
+  const secs = Math.round((Date.now() - scanStartedAt) / 1000);
+  el.textContent = `Scanning — checking robots.txt, multiple user-agents, headers, on-page signals, agentic-browsing accessibility, and content specificity… (${secs}s so far — response time is measured in isolation, on purpose, so slow sites take longer to scan but produce an honest number)`;
+}
 
 async function runScan() {
   const urlInput = document.getElementById('url-input');
-  const err = document.getElementById('err-box');
-  err.style.display = 'none';
+  document.getElementById('err-box').style.display = 'none';
   const url = urlInput.value.trim();
-  if (!url) { err.textContent = 'Enter a URL to scan.'; err.style.display = 'block'; return; }
+  if (!url) { showError('Enter a URL to scan.'); return; }
 
   const extraPages = Array.from(document.querySelectorAll('.extra-page-input')).map(i => i.value.trim()).filter(Boolean);
 
-  const btn = document.getElementById('run-btn');
-  btn.disabled = true;
-  btn.textContent = 'Scanning…';
-  document.getElementById('loading').style.display = 'block';
+  if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+  scanStartedAt = Date.now();
+  setScanningUI(true);
   document.getElementById('results').style.display = 'none';
+  updateLoadingText();
+
+  const jobId = (crypto.randomUUID ? crypto.randomUUID() : (Date.now().toString(36) + Math.random().toString(36).slice(2)));
 
   try {
-    const res = await fetch('/api/scan', {
+    // Background function — the platform returns immediately on invocation and the actual scan
+    // keeps running server-side for as long as it needs, unconstrained by a regular function's
+    // ~10s execution ceiling. Progress/results are read separately via polling below.
+    await fetch('/api/run-scan', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url, extraPages })
+      body: JSON.stringify({ jobId, url, extraPages })
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Scan failed.');
-    lastResult = data;
-    renderResults(data);
   } catch (e) {
-    err.textContent = e.message;
-    err.style.display = 'block';
-  } finally {
-    btn.disabled = false;
-    btn.textContent = 'Run Scan';
-    document.getElementById('loading').style.display = 'none';
+    showError('Could not start the scan: ' + e.message);
+    setScanningUI(false);
+    return;
+  }
+
+  pollScanStatus(jobId, 8);
+}
+
+async function pollScanStatus(jobId, graceRetriesLeft) {
+  updateLoadingText();
+  try {
+    const res = await fetch('/api/scan-status?jobId=' + encodeURIComponent(jobId));
+    const data = await res.json();
+
+    if (data.status === 'not_found') {
+      // The background function may not have written its first status yet — keep polling
+      // briefly instead of treating that startup race as a real failure.
+      if (graceRetriesLeft > 0) {
+        pollTimer = setTimeout(() => pollScanStatus(jobId, graceRetriesLeft - 1), 700);
+      } else {
+        showError('Could not start the scan — please try again.');
+        setScanningUI(false);
+      }
+      return;
+    }
+
+    if (data.status === 'running') {
+      pollTimer = setTimeout(() => pollScanStatus(jobId, 0), 2000);
+      return;
+    }
+
+    if (data.status === 'error') {
+      showError(data.message || 'Scan failed.');
+      setScanningUI(false);
+      return;
+    }
+
+    if (data.status === 'done') {
+      lastResult = data.result;
+      renderResults(data.result);
+      setScanningUI(false);
+      return;
+    }
+
+    // Unrecognized status — surface it rather than polling forever.
+    showError('Unexpected scan status: ' + esc(data.status || 'unknown'));
+    setScanningUI(false);
+  } catch (e) {
+    showError(e.message);
+    setScanningUI(false);
   }
 }
 
