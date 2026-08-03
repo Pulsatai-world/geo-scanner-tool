@@ -106,6 +106,7 @@
   /* ── prioritized findings ── */
   .finding{border-left:3px solid var(--ink-200);padding:10px 14px;margin-bottom:8px;border-radius:6px;background:var(--ice)}
   .finding.critical{border-left-color:#b03a3a;background:var(--danger-100)}
+  .finding.discovery{border-left-color:var(--ink-500);background:var(--ink-100)}
   .finding.on-page{border-left-color:#8a6a12;background:var(--warning-100)}
   .finding.agentic{border-left-color:var(--emerald-700);background:var(--emerald-50)}
   .finding.content{border-left-color:var(--navy);background:var(--violet-50)}
@@ -196,8 +197,14 @@
     </div>
 
     <div class="card">
+      <div class="card-title">Key Page Discovery</div>
+      <div class="card-caption" id="discovery-caption">Automatically checked the site's nav, header, and footer for About, FAQ, Contact, Services, and Blog pages — About and FAQ are the two highest-impact page types for GEO. Anything found is added to the scan below automatically.</div>
+      <div id="discovery-table"></div>
+    </div>
+
+    <div class="card">
       <div class="card-title">Section 2 · On-Page GEO Signals</div>
-      <div class="card-caption">Homepage plus any additional pages checked.</div>
+      <div class="card-caption">Homepage plus any additional pages checked — including any pages found automatically via Key Page Discovery above.</div>
       <div class="page-tabs" id="section2-tabs"></div>
       <div id="section2-panels"></div>
     </div>
@@ -380,6 +387,11 @@ function renderResults(data) {
   }
 
   document.getElementById('section1-table').innerHTML = renderChecksTable(data.section1.checks, 's1');
+
+  if (data.pageDiscovery.skipped) {
+    document.getElementById('discovery-caption').textContent = 'Could not run — the homepage was unreachable, so its navigation links could not be parsed.';
+  }
+  document.getElementById('discovery-table').innerHTML = renderChecksTable(data.pageDiscovery.categories, 'disc');
 
   const tabs2 = document.getElementById('section2-tabs');
   const panels2 = document.getElementById('section2-panels');

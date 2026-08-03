@@ -222,6 +222,86 @@ function checkResponseTime(timingFetch) {
   };
 }
 
+// ── Key Page Discovery ──
+// Before the per-page checks run, parse the homepage's nav/header/footer links for the handful
+// of page types our own methodology treats as highest-impact for GEO (About and FAQ especially).
+// Found pages are fetched and folded into the same per-page pipeline extraPages already uses —
+// this is also what makes the Section 3 boilerplate/duplicate-content check actually useful,
+// since it needs multiple real pages to compare and previously almost never got them.
+
+const PAGE_DISCOVERY_PATTERNS = {
+  about: { label: 'About', patterns: ['quienes-somos', 'quiénes-somos', 'sobre-nosotros', 'about-us', 'nosotros', 'about'] },
+  faq: { label: 'FAQ', patterns: ['preguntas-frecuentes', 'preguntas', 'faqs', 'faq'] },
+  contact: { label: 'Contact', patterns: ['contactanos', 'contáctanos', 'contact-us', 'contacto', 'contact'] },
+  services: { label: 'Services', patterns: ['servicios', 'services'] },
+  blog: { label: 'Blog', patterns: ['articulos', 'artículos', 'insights', 'noticias', 'blog'] }
+};
+
+// Highest-impact page types per our own client methodology — called out specifically in findings.
+const HIGH_IMPACT_DISCOVERY_CATEGORIES = new Set(['about', 'faq']);
+
+function normalizeUrlForCompare(u) {
+  try {
+    const p = new URL(u);
+    const host = p.hostname.replace(/^www\./, ''); // www/non-www treated as the same page — a
+    // real site (shalitaoboereeds.com) surfaced this: the homepage URL had no "www." while its
+    // own nav links resolved to "www.shalitaoboereeds.com", so a manually-added extra page and
+    // the auto-discovered page for the same URL were being treated as different pages and both
+    // fetched/analyzed — double-counting one page instead of deduping it.
+    let path = p.pathname;
+    if (path.length > 1 && path.endsWith('/')) path = path.slice(0, -1);
+    return `${p.protocol}//${host}${p.port ? ':' + p.port : ''}${path}${p.search}`.toLowerCase();
+  } catch {
+    return String(u || '').toLowerCase();
+  }
+}
+
+// Pure link-matching — no fetching, no report text. Returns { about: {found,url,label}, ... }.
+function discoverKeyPages($home, homepageUrl) {
+  const homepageHost = new URL(homepageUrl).hostname.replace(/^www\./, '');
+  const homepageNormalized = normalizeUrlForCompare(homepageUrl);
+  const links = [];
+  $home('nav a, header a, footer a').each((_, el) => {
+    const href = $home(el).attr('href');
+    if (!href) return;
+    let resolved;
+    try { resolved = new URL(href, homepageUrl); } catch { return; }
+    if (!/^https?:$/.test(resolved.protocol)) return; // skip mailto:, tel:, javascript:, etc.
+    if (resolved.hostname.replace(/^www\./, '') !== homepageHost) return; // same-site only
+    resolved.hash = '';
+    if (normalizeUrlForCompare(resolved.href) === homepageNormalized) return; // skip self-links
+    links.push({ href: resolved.href, text: $home(el).text().trim().toLowerCase(), slug: resolved.pathname.toLowerCase() });
+  });
+
+  const categories = {};
+  for (const [id, cfg] of Object.entries(PAGE_DISCOVERY_PATTERNS)) {
+    const match = links.find(link => cfg.patterns.some(p => link.slug.includes(p) || link.text.includes(p)));
+    categories[id] = { id, label: cfg.label, found: !!match, url: match ? match.href : null };
+  }
+  return categories;
+}
+
+// Turns the raw match data into report-ready entries (status/detail/howToFix), and marks
+// categories whose page was already covered by a user-supplied extra page.
+function buildPageDiscoveryReport(categories, alreadyCoveredUrls) {
+  return Object.values(categories).map(c => {
+    const alreadyIncluded = c.found && alreadyCoveredUrls.has(normalizeUrlForCompare(c.url));
+    const impactNote = HIGH_IMPACT_DISCOVERY_CATEGORIES.has(c.id) ? ' This is one of the two highest-impact page types for GEO per our own methodology.' : '';
+    return {
+      id: c.id,
+      title: `${c.label} page`,
+      status: c.found ? 'PASS' : 'WARNING',
+      found: c.found,
+      url: c.url,
+      detail: c.found
+        ? `Found at ${c.url}${alreadyIncluded ? ' (already covered by a manually-added page).' : ' — automatically added to the scan.'}`
+        : `No ${c.label} page found linked from the site's nav, header, or footer.${impactNote}`,
+      howToFix: c.found ? undefined : `Add a clearly-linked ${c.label} page from the main navigation or footer — automated discovery couldn't find one, which means AI engines likely can't either.`,
+      raw: { matchedUrl: c.url }
+    };
+  });
+}
+
 // ── Section 2: On-page GEO signals ──
 
 const COMMON_SCHEMA_TYPES = ['Organization', 'LocalBusiness', 'WebSite', 'Service', 'FAQPage', 'Product', 'Article', 'BreadcrumbList'];
@@ -285,6 +365,166 @@ function analyzeImages($) {
   return { total, withAlt, pct: total ? Math.round((withAlt / total) * 100) : null };
 }
 
+// ── New Section 2 checks (page discovery add-on) ──
+
+function normalizeForMatch(s) {
+  return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+// Generic JSON-LD @type search — used by the contact-info check below.
+function containsSchemaType(node, typeName) {
+  if (Array.isArray(node)) return node.some(n => containsSchemaType(n, typeName));
+  if (node && typeof node === 'object') {
+    const types = node['@type'] ? (Array.isArray(node['@type']) ? node['@type'] : [node['@type']]) : [];
+    if (types.includes(typeName)) return true;
+    return Object.values(node).some(v => v && typeof v === 'object' && containsSchemaType(v, typeName));
+  }
+  return false;
+}
+
+function extractFaqPairs($) {
+  const pairs = [];
+  const collect = (node) => {
+    if (Array.isArray(node)) { node.forEach(collect); return; }
+    if (node && typeof node === 'object') {
+      const types = node['@type'] ? (Array.isArray(node['@type']) ? node['@type'] : [node['@type']]) : [];
+      if (types.includes('FAQPage') && Array.isArray(node.mainEntity)) {
+        node.mainEntity.forEach(q => {
+          if (q && typeof q === 'object') {
+            const question = typeof q.name === 'string' ? q.name : '';
+            const answer = q.acceptedAnswer && typeof q.acceptedAnswer.text === 'string' ? q.acceptedAnswer.text : '';
+            if (question || answer) pairs.push({ question, answer });
+          }
+        });
+      }
+      Object.values(node).forEach(v => { if (v && typeof v === 'object') collect(v); });
+    }
+  };
+  $('script[type="application/ld+json"]').each((_, el) => {
+    try { collect(JSON.parse($(el).contents().text())); } catch { /* malformed JSON-LD — ignore */ }
+  });
+  return pairs;
+}
+
+// 1. FAQPage schema vs. visible content match — only applies when FAQPage schema is actually
+// present on the page (returns null otherwise, so pages with no FAQ schema don't get an
+// irrelevant check row).
+function checkFaqSchemaMatch($, mainText) {
+  const pairs = extractFaqPairs($);
+  if (!pairs.length) return null;
+  const normalizedMain = normalizeForMatch(mainText);
+  let matched = 0;
+  pairs.forEach(p => {
+    // Match on a meaningful prefix of the question rather than the full string, to tolerate
+    // minor visible-text differences (punctuation, a trailing "?") without requiring an exact
+    // full-string match.
+    const qSnippet = normalizeForMatch(p.question).split(' ').slice(0, 8).join(' ');
+    if (qSnippet && normalizedMain.includes(qSnippet)) matched++;
+  });
+  const ratio = matched / pairs.length;
+  const status = ratio >= 0.7 ? 'PASS' : 'WARNING';
+  return {
+    id: 'faq-schema-match',
+    title: 'FAQPage schema vs. visible content match',
+    status,
+    detail: status === 'PASS'
+      ? `${matched}/${pairs.length} FAQPage schema question(s) match text visible on the page.`
+      : `Only ${matched}/${pairs.length} FAQPage schema question(s) could be matched to visible content on the page.`,
+    howToFix: status === 'PASS' ? undefined : 'Make sure FAQPage schema mirrors real, visible Q&A content on the page — schema that doesn\'t match what a visitor actually sees can be flagged as low-quality or manipulative by AI engines.',
+    raw: { totalQuestions: pairs.length, matched }
+  };
+}
+
+// 2. Author/credential attribution
+function containsAuthorPerson(node) {
+  if (Array.isArray(node)) return node.some(containsAuthorPerson);
+  if (node && typeof node === 'object') {
+    for (const key of ['author', 'creator']) {
+      if (node[key] != null) {
+        const items = Array.isArray(node[key]) ? node[key] : [node[key]];
+        for (const item of items) {
+          if (typeof item === 'string' && item.trim()) return true;
+          if (item && typeof item === 'object' && typeof item.name === 'string' && item.name.trim()) return true;
+        }
+      }
+    }
+    return Object.values(node).some(v => v && typeof v === 'object' && containsAuthorPerson(v));
+  }
+  return false;
+}
+
+function checkAuthorAttribution($, mainText) {
+  const hasRelAuthor = $('[rel~="author"]').length > 0;
+  let hasPersonSchema = false;
+  $('script[type="application/ld+json"]').each((_, el) => {
+    try { if (containsAuthorPerson(JSON.parse($(el).contents().text()))) hasPersonSchema = true; } catch { /* ignore */ }
+  });
+  // "by ", "written by", "autor:", "por " followed by what looks like a name — narrower than a
+  // bare substring match on "by"/"por" to avoid flagging ordinary prose as a byline.
+  const hasByline = /\b(?:by|written by|autor:|por)\s+[A-Z][a-zA-Z'-]+/.test(mainText);
+  const found = hasRelAuthor || hasPersonSchema || hasByline;
+  return {
+    id: 'author-attribution',
+    title: 'Author/credential attribution',
+    status: found ? 'PASS' : 'WARNING',
+    detail: found ? 'Author attribution found (byline, rel="author" link, and/or Person schema tied to authorship).' : 'No author attribution found — no byline, rel="author" link, or Person schema tied to authorship.',
+    howToFix: found ? undefined : 'Add named author attribution to the page — a byline, an author schema entry, or both. Named, credentialed sources are weighted more heavily by AI engines than unattributed corporate copy.',
+    raw: { hasRelAuthor, hasPersonSchema, hasByline }
+  };
+}
+
+// 3. First-250-words specificity — reuses the same entity/number/year heuristic as Section 3's
+// whole-page specificity check (see detectEntities below), applied only to the opening of the
+// page's main content.
+function checkFirstWordsSpecificity(mainText) {
+  const words = mainText.split(/\s+/).filter(Boolean);
+  if (!words.length) return null; // no content at all — Section 3's word-count check covers this
+  const first250 = words.slice(0, 250).join(' ');
+  const entities = detectEntities(first250);
+  const status = (entities.properNounCount >= 3 || entities.numberCount >= 3) ? 'PASS' : 'WARNING';
+  return {
+    id: 'first-250-specificity',
+    title: 'First-250-words specificity',
+    status,
+    detail: status === 'PASS'
+      ? `The first ~250 words contain ${entities.properNounCount} proper-noun-like phrase(s) and ${entities.numberCount} number(s) — specific detail appears early.`
+      : `The first ~250 words read as generic (${entities.properNounCount} proper nouns, ${entities.numberCount} numbers), even if the page has more specific content further down.`,
+    howToFix: status === 'PASS' ? undefined : 'Move your most specific, concrete details (names, numbers, credentials) into the first 250-300 words. AI extraction tools weight the beginning of a page\'s content more heavily than text buried further down.',
+    raw: { wordsChecked: Math.min(words.length, 250), properNounCount: entities.properNounCount, numberCount: entities.numberCount }
+  };
+}
+
+// 4. Contact info machine-readability — only applies when the page appears to display contact
+// info at all (a phone- or email-shaped string in the visible text, or an existing
+// tel:/mailto:/ContactPoint signal); a page that never discusses contact info isn't a fair target
+// for this check.
+function pageHasPlainTextContactInfo(mainText) {
+  const emailPattern = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i;
+  const phonePattern = /(\+?\d[\d\s().-]{7,}\d)/;
+  return emailPattern.test(mainText) || phonePattern.test(mainText);
+}
+
+function checkContactMachineReadability($, mainText) {
+  const telLinks = $('a[href^="tel:"]').length;
+  const mailtoLinks = $('a[href^="mailto:"]').length;
+  let hasContactPointSchema = false;
+  $('script[type="application/ld+json"]').each((_, el) => {
+    try { if (containsSchemaType(JSON.parse($(el).contents().text()), 'ContactPoint')) hasContactPointSchema = true; } catch { /* ignore */ }
+  });
+  const found = telLinks > 0 || mailtoLinks > 0 || hasContactPointSchema;
+  if (!found && !pageHasPlainTextContactInfo(mainText)) return null; // no contact info of any kind on this page
+  return {
+    id: 'contact-machine-readable',
+    title: 'Contact info machine-readability',
+    status: found ? 'PASS' : 'WARNING',
+    detail: found
+      ? `Machine-readable contact method(s) found: ${telLinks} tel: link(s), ${mailtoLinks} mailto: link(s)${hasContactPointSchema ? ', ContactPoint schema present' : ''}.`
+      : 'Contact info appears to be present as plain text only — no tel:/mailto: links or ContactPoint schema found.',
+    howToFix: found ? undefined : 'Wrap phone numbers in tel: links and emails in mailto: links, and add ContactPoint schema. This lets AI agents (and mobile users) actually act on the contact info, not just read it.',
+    raw: { telLinks, mailtoLinks, hasContactPointSchema }
+  };
+}
+
 function analyzePage(pageUrl, html) {
   const $ = cheerio.load(html);
   const title = $('title').first().text().trim();
@@ -314,6 +554,11 @@ function analyzePage(pageUrl, html) {
   const ogMissing = ['title', 'description', 'type'].filter(k => !og[k]);
   checks.push({ id: 'open-graph', title: 'Open Graph tags', status: ogMissing.length === 0 ? 'PASS' : (ogMissing.length === 3 ? 'FAIL' : 'WARNING'), detail: ogMissing.length === 0 ? 'og:title, og:description and og:type all present.' : `Missing: ${ogMissing.map(k => 'og:' + k).join(', ')}.`, howToFix: ogMissing.length === 0 ? undefined : `Add the missing Open Graph tags (${ogMissing.map(k => 'og:' + k).join(', ')}) — these control how the page appears when shared/cited, including by some AI tools that fetch preview metadata.`, raw: og });
   checks.push({ id: 'image-alt', title: 'Image alt text coverage', status: images.total === 0 ? 'PASS' : (images.pct >= 80 ? 'PASS' : images.pct >= 40 ? 'WARNING' : 'FAIL'), detail: images.total === 0 ? 'No <img> tags on this page.' : `${images.withAlt}/${images.total} images (${images.pct}%) have non-empty alt text.`, howToFix: (images.total === 0 || images.pct >= 80) ? undefined : 'Add descriptive alt text to images missing it — this helps both accessibility tools and AI engines understand image content, especially on product/service pages.', raw: images });
+  // Added checks (page discovery add-on) — each returns null when not applicable to this page
+  // (e.g. no FAQ schema present) rather than forcing an irrelevant row.
+  [checkFaqSchemaMatch($, mainText), checkAuthorAttribution($, mainText), checkFirstWordsSpecificity(mainText), checkContactMachineReadability($, mainText)]
+    .filter(Boolean)
+    .forEach(c => checks.push(c));
 
   const mainCheck = checkMainLandmark($);
   const headingSeqCheck = checkHeadingHierarchySequential(headingInfo);
@@ -468,7 +713,7 @@ function analyzeContentSpecificity(pages) {
     status: boilerplatePairs.length ? 'WARNING' : 'PASS',
     detail: boilerplatePairs.length
       ? `${boilerplatePairs.length} page pair(s) share heavily overlapping content (${boilerplatePairs.map(p => p.similarity + '%').join(', ')}) — a sign of templated, low-value pages (this is exactly the pattern found in directory-listing-style sites).`
-      : (pages.length > 1 ? 'No significant content overlap detected between the scanned pages.' : 'Only one page scanned — boilerplate comparison needs at least two pages.'),
+      : (pages.length > 1 ? 'No significant content overlap detected between the scanned pages.' : 'Only one page was available to compare — automatic key-page discovery found no About/FAQ/Contact/Services/Blog page, and no additional pages were provided manually. Add pages via the Advanced section, or check that the site\'s navigation uses standard link text/URL patterns.'),
     howToFix: boilerplatePairs.length ? 'Differentiate templated pages with unique, page-specific content — especially for directory/listing-style pages where a shared template can make every page nearly identical.' : undefined,
     raw: { pairs: boilerplatePairs }
   };
@@ -517,14 +762,15 @@ function computeScore(section1Checks, section2Pages, section4Pages, section3) {
   };
 }
 
-function buildPrioritizedFindings(section1Checks, section2Pages, section4Pages, section3) {
+function buildPrioritizedFindings(section1Checks, pageDiscovery, section2Pages, section4Pages, section3) {
   const findings = [];
   section1Checks.filter(c => c.status !== 'PASS').forEach(c => findings.push({ priority: 'critical', section: 'Crawlability', title: c.title, detail: c.detail, howToFix: c.howToFix }));
+  pageDiscovery.categories.filter(c => c.status !== 'PASS').forEach(c => findings.push({ priority: 'discovery', section: 'Key Page Discovery', title: c.title, detail: c.detail, howToFix: c.howToFix }));
   section2Pages.forEach(p => p.checks.filter(c => c.status !== 'PASS').forEach(c => findings.push({ priority: 'on-page', section: 'On-Page GEO Signals', page: p.url, title: c.title, detail: c.detail, howToFix: c.howToFix })));
   section4Pages.forEach(p => p.checks.filter(c => c.status !== 'PASS').forEach(c => findings.push({ priority: 'agentic', section: 'Agentic Browsing / AI Agent Accessibility', page: p.url, title: c.title, detail: c.detail, howToFix: c.howToFix })));
   section3.perPage.forEach(p => p.checks.filter(c => c.status !== 'PASS').forEach(c => findings.push({ priority: 'content', section: 'Content Specificity', page: p.url, title: c.title, detail: c.detail, howToFix: c.howToFix })));
   if (section3.boilerplateCheck.status !== 'PASS') findings.push({ priority: 'content', section: 'Content Specificity', title: section3.boilerplateCheck.title, detail: section3.boilerplateCheck.detail, howToFix: section3.boilerplateCheck.howToFix });
-  const order = { critical: 0, 'on-page': 1, agentic: 2, content: 3 };
+  const order = { critical: 0, discovery: 1, 'on-page': 2, agentic: 3, content: 4 };
   return findings.sort((a, b) => order[a.priority] - order[b.priority]);
 }
 
@@ -583,10 +829,37 @@ export async function runScan({ url, extraPages }) {
     section1Checks.push(multiUA.check, sitemapResult, checkResponseTime(timingFetch));
   }
 
-  // Section 2 + 3 + 4 source pages: homepage (if it loaded) + any extra pages that loaded
+  // Key Page Discovery: parse the homepage's nav/header/footer for About/FAQ/Contact/Services/
+  // Blog links, then fetch whichever were found (deduped against user-supplied extra pages) —
+  // this can only run once the homepage HTML is in hand, so it's a second sequential wave rather
+  // than folded into the batch above.
+  const alreadyCovered = new Set([homepageUrl, ...cleanExtraPages].map(normalizeUrlForCompare));
+  let pageDiscovery;
+  let discoveredFetches = [];
+  if ($home) {
+    const categories = discoverKeyPages($home, homepageUrl);
+    const toFetch = Object.values(categories).filter(c => c.found && !alreadyCovered.has(normalizeUrlForCompare(c.url)));
+    discoveredFetches = await Promise.all(toFetch.map(async c => ({ url: c.url, ...(await fetchSafe(c.url, USER_AGENTS.browser.ua)) })));
+    pageDiscovery = { title: 'Key Page Discovery', skipped: false, categories: buildPageDiscoveryReport(categories, alreadyCovered) };
+  } else {
+    // Homepage was unreachable — there's no nav/header/footer to parse, so discovery can't run.
+    pageDiscovery = {
+      title: 'Key Page Discovery',
+      skipped: true,
+      categories: Object.entries(PAGE_DISCOVERY_PATTERNS).map(([id, cfg]) => ({
+        id, title: `${cfg.label} page`, status: 'WARNING', found: false, url: null,
+        detail: 'Could not check — the homepage was unreachable, so its navigation links could not be parsed.',
+        howToFix: undefined, raw: {}
+      }))
+    };
+  }
+
+  // Section 2 + 3 + 4 source pages: homepage (if it loaded) + any extra pages that loaded +
+  // any auto-discovered pages that loaded.
   const pageFetches = [
     { url: homepageUrl, html: homepageFetch.text, ok: homepageFetch.ok, status: homepageFetch.status },
-    ...extraPageFetches.map(p => ({ url: p.url, html: p.text, ok: p.ok, status: p.status }))
+    ...extraPageFetches.map(p => ({ url: p.url, html: p.text, ok: p.ok, status: p.status })),
+    ...discoveredFetches.map(p => ({ url: p.url, html: p.text, ok: p.ok, status: p.status }))
   ];
 
   const validPages = pageFetches.filter(p => p.ok && p.html);
@@ -599,7 +872,7 @@ export async function runScan({ url, extraPages }) {
   const section4Pages = analyzedPages.map(p => ({ url: p.url, checks: p.agenticChecks }));
 
   const score = computeScore(section1Checks, section2Pages, section4Pages, section3);
-  const prioritizedFindings = buildPrioritizedFindings(section1Checks, section2Pages, section4Pages, section3);
+  const prioritizedFindings = buildPrioritizedFindings(section1Checks, pageDiscovery, section2Pages, section4Pages, section3);
 
   return {
     scannedAt: new Date().toISOString(),
@@ -607,6 +880,7 @@ export async function runScan({ url, extraPages }) {
     skippedPages,
     score,
     section1: { title: 'Crawlability Layer', checks: section1Checks },
+    pageDiscovery,
     section2: { title: 'On-Page GEO Signals', pages: section2Pages },
     section4: { title: 'Agentic Browsing / AI Agent Accessibility', pages: section4Pages },
     section3: { title: 'Content Specificity Signals', perPage: section3.perPage.map(p => ({ url: p.url, checks: p.checks })), boilerplate: section3.boilerplateCheck },
