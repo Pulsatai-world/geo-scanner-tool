@@ -74,7 +74,30 @@ function classifyFetchError(err, timedOut, ms) {
   return { kind: 'unknown', code: code || null, label: err?.cause?.message || err?.message || 'unknown network error' };
 }
 
-async function fetchSafe(url, uaString, timeoutMs = FETCH_TIMEOUT_MS) {
+// Errors worth a second attempt. All three fail in roughly zero milliseconds, so a retry costs
+// nothing measurable — and edge bot protection (Cloudflare Bot Fight Mode in particular)
+// challenges requests probabilistically rather than blocking outright, so the same origin can
+// refuse one connection and serve the next. Observed directly on a client site: a scan refused
+// at every user-agent in the morning completed cleanly an hour later with nothing changed.
+// DNS and TLS failures are deliberately excluded — those are settled facts that a retry will
+// not change, and retrying them just doubles the wait before an honest answer.
+const RETRYABLE_ERROR_KINDS = new Set(['refused', 'network', 'unknown']);
+const RETRY_BACKOFF_MS = 1500;
+
+async function fetchSafe(url, uaString, timeoutMs = FETCH_TIMEOUT_MS, attempt = 0) {
+  const res = await fetchOnce(url, uaString, timeoutMs);
+  if (!res.ok && attempt === 0 && RETRYABLE_ERROR_KINDS.has(res.errorKind)) {
+    await sleep(RETRY_BACKOFF_MS);
+    const retried = await fetchOnce(url, uaString, timeoutMs);
+    // Record that a retry happened, so a site that only responds intermittently is visible as
+    // such in the raw output rather than silently smoothed over.
+    if (retried.ok) return { ...retried, recoveredAfterRetry: true };
+    return { ...retried, retried: true };
+  }
+  return res;
+}
+
+async function fetchOnce(url, uaString, timeoutMs = FETCH_TIMEOUT_MS) {
   const controller = new AbortController();
   let timedOut = false;
   const timer = setTimeout(() => { timedOut = true; controller.abort(); }, timeoutMs);
