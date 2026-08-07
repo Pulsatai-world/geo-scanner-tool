@@ -66,6 +66,9 @@
   .badge-PASS{background:var(--emerald-100);color:var(--emerald-700)}
   .badge-WARNING{background:var(--warning-100);color:#8a6a12}
   .badge-FAIL{background:var(--danger-100);color:#b03a3a}
+  /* Deliberately neutral, not red: an unverified check is not a defect. It reads as "we could
+     not establish this", which is a manual task for us — never a fix for the client. */
+  .badge-INCONCLUSIVE{background:var(--ink-100);color:var(--ink-600);border:1px dashed var(--ink-300)}
 
   /* ── score hero ── */
   .score-hero{margin-top:4px;background:var(--dark);color:#fff;border-radius:var(--radius-lg);padding:28px 30px;display:flex;gap:36px;flex-wrap:wrap;align-items:center;box-shadow:var(--shadow-md);position:relative;overflow:hidden}
@@ -78,7 +81,12 @@
   .score-num.mid{color:#e0b23b}
   .score-den{font-family:var(--font-display);font-size:1.2rem;font-weight:700;color:#c9c2e8}
   .score-label{font-family:var(--font-display);font-size:13px;font-weight:600;color:#fff}
-  .gated-tag{display:inline-block;margin-top:6px;font-size:11px;font-weight:700;color:#ffb4b4;background:rgba(176,58,58,.25);padding:4px 10px;border-radius:999px}
+  .blocker-tag{display:inline-block;margin-top:6px;font-size:11px;font-weight:700;color:#ffb4b4;background:rgba(176,58,58,.25);padding:4px 10px;border-radius:999px}
+  .unverified-tag{display:inline-block;margin-top:6px;margin-left:6px;font-size:11px;font-weight:700;color:#d9dde5;background:rgba(255,255,255,.12);padding:4px 10px;border-radius:999px}
+  .score-note{margin-top:8px;font-size:11.5px;color:#c9c2e8;max-width:46ch;line-height:1.5}
+  /* Unreachable state: the hero shows no number at all rather than a low one, because a score
+     implies a measurement was taken. */
+  .score-unreach{font-family:var(--font-display);font-size:2rem;font-weight:800;color:#e0b23b;line-height:1.05;letter-spacing:-.02em}
   .score-subs{position:relative;z-index:1;display:flex;gap:28px;flex-wrap:wrap;margin-left:auto}
   .score-sub{display:flex;flex-direction:column;gap:4px}
   .score-sub .sl{font-family:var(--font-display);font-size:10.5px;font-weight:600;color:#c9c2e8;text-transform:uppercase;letter-spacing:.06em}
@@ -105,7 +113,8 @@
 
   /* ── prioritized findings ── */
   .finding{border-left:3px solid var(--ink-200);padding:10px 14px;margin-bottom:8px;border-radius:6px;background:var(--ice)}
-  .finding.critical{border-left-color:#b03a3a;background:var(--danger-100)}
+  .finding.blocker{border-left-color:#b03a3a;background:var(--danger-100)}
+  .finding.unverified{border-left-color:var(--ink-300);border-left-style:dashed;background:var(--ice)}
   .finding.discovery{border-left-color:var(--ink-500);background:var(--ink-100)}
   .finding.on-page{border-left-color:#8a6a12;background:var(--warning-100)}
   .finding.agentic{border-left-color:var(--emerald-700);background:var(--emerald-50)}
@@ -357,39 +366,72 @@ function renderResults(data) {
   document.getElementById('results').style.display = 'block';
 
   const s = data.score;
-  const label = s.overall >= 70 ? 'Strong GEO readiness' : s.overall >= 40 ? 'Emerging GEO readiness' : 'Low GEO readiness — Layer 1 needs attention';
-  document.getElementById('score-hero').innerHTML = `
-    <div class="score-main">
-      <div class="score-eyebrow">GEO Technical Readiness Score</div>
-      <div class="score-figure"><span class="score-num ${scoreClass(s.overall)}">${s.overall}</span><span class="score-den">/ 100</span></div>
-      <div class="score-label">${esc(label)}</div>
-      ${s.gated ? `<div class="gated-tag">Score capped — ${s.criticalFailCount} critical crawlability failure${s.criticalFailCount === 1 ? '' : 's'} gate the total</div>` : ''}
-    </div>
-    <div class="score-subs">
-      <div class="score-sub"><div class="sl">Crawlability</div><div class="sv">${s.sections.crawlability ?? '—'}</div></div>
-      <div class="score-sub"><div class="sl">On-Page</div><div class="sv">${s.sections.onPage ?? '—'}</div></div>
-      <div class="score-sub"><div class="sl">Agentic Browsing</div><div class="sv">${s.sections.agenticBrowsing ?? '—'}</div></div>
-      <div class="score-sub"><div class="sl">Content Specificity</div><div class="sv">${s.sections.contentSpecificity ?? '—'}</div></div>
-    </div>`;
+  const q = data.scanQuality || {};
+
+  if (!data.reachable || s.overall === null) {
+    // No score is shown when the site could not be loaded. Publishing a number here is what
+    // previously turned a scanner-side network failure into a "23/100" verdict on a healthy
+    // client site — the one output this tool must never produce.
+    document.getElementById('score-hero').innerHTML = `
+      <div class="score-main">
+        <div class="score-eyebrow">Scan incomplete</div>
+        <div class="score-unreach">No score — site not reachable<br>from the scanner</div>
+        <div class="score-note">The scanner could not load this site, so there is nothing to score. This is <b>not</b> a finding about the site, which may be serving visitors normally. See "Needs manual verification" below for what was determined and what to check.</div>
+      </div>`;
+  } else {
+    const label = s.overall >= 70 ? 'Strong on-page GEO readiness' : s.overall >= 40 ? 'Emerging on-page GEO readiness' : 'Low on-page GEO readiness';
+    document.getElementById('score-hero').innerHTML = `
+      <div class="score-main">
+        <div class="score-eyebrow">On-Page GEO Readiness Score</div>
+        <div class="score-figure"><span class="score-num ${scoreClass(s.overall)}">${s.overall}</span><span class="score-den">/ 100</span></div>
+        <div class="score-label">${esc(label)}</div>
+        ${s.blockers.count ? `<div class="blocker-tag">${s.blockers.count} crawlability blocker${s.blockers.count === 1 ? '' : 's'} — listed separately, not scored</div>` : ''}
+        ${s.unverified.count ? `<div class="unverified-tag">${s.unverified.count} check${s.unverified.count === 1 ? '' : 's'} need manual verification</div>` : ''}
+        <div class="score-note">Measures on-page factors your web team can change, across ${q.pagesAnalyzed || 0} page${q.pagesAnalyzed === 1 ? '' : 's'}. Crawlability is reported separately as blockers — it is hosting and WAF territory, and folding it in would let infrastructure noise move a number meant to track on-page work.</div>
+      </div>
+      <div class="score-subs">
+        <div class="score-sub"><div class="sl">On-Page</div><div class="sv">${s.sections.onPage ?? '—'}</div></div>
+        <div class="score-sub"><div class="sl">Agentic Browsing</div><div class="sv">${s.sections.agenticBrowsing ?? '—'}</div></div>
+        <div class="score-sub"><div class="sl">Content Specificity</div><div class="sv">${s.sections.contentSpecificity ?? '—'}</div></div>
+        <div class="score-sub"><div class="sl">Crawlability<br><span style="font-weight:500;text-transform:none;letter-spacing:0">(not in score)</span></div><div class="sv">${s.sections.crawlability ?? '—'}</div></div>
+      </div>`;
+  }
 
   const findingsList = document.getElementById('findings-list');
-  if (!data.prioritizedFindings.length) {
-    findingsList.innerHTML = '<div class="empty">No issues found — every check passed.</div>';
-  } else {
-    findingsList.innerHTML = data.prioritizedFindings.map(f => `
+  const actionable = data.prioritizedFindings.filter(f => f.priority !== 'unverified');
+  const unverifiedFindings = data.prioritizedFindings.filter(f => f.priority === 'unverified');
+  const renderFinding = f => `
       <div class="finding ${f.priority}">
-        <div class="finding-tag">${esc(f.section)}</div>
+        <div class="finding-tag">${esc(f.section)}${f.status ? ' · ' + esc(f.status) : ''}</div>
         <div class="finding-title">${esc(f.title)}</div>
         <div class="finding-detail">${esc(f.detail)}</div>
         ${f.page ? `<div class="finding-page">${esc(f.page)}</div>` : ''}
         ${f.howToFix ? `<div class="how-to-fix"><b>How to fix:</b> ${esc(f.howToFix)}</div>` : ''}
-      </div>`).join('');
+      </div>`;
+
+  let findingsHtml = '';
+  if (!actionable.length) {
+    findingsHtml += data.reachable
+      ? '<div class="empty">No issues found — every check that could be evaluated passed.</div>'
+      : '<div class="empty">No findings. The site could not be loaded, so nothing was evaluated — see the unverified items below.</div>';
+  } else {
+    findingsHtml += actionable.map(renderFinding).join('');
   }
+  // Unverified items are separated under their own heading so they can never be mistaken for
+  // confirmed defects or handed to a client as remediation work.
+  if (unverifiedFindings.length) {
+    findingsHtml += `<div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--line)">
+      <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--ink-400);margin-bottom:4px">Needs manual verification — not client-facing findings</div>
+      <div style="font-size:12px;color:var(--ink-500);margin-bottom:10px;line-height:1.5">The scanner could not establish these. They are open questions for us to check, not problems confirmed on the site.</div>
+      ${unverifiedFindings.map(renderFinding).join('')}
+    </div>`;
+  }
+  findingsList.innerHTML = findingsHtml;
 
   document.getElementById('section1-table').innerHTML = renderChecksTable(data.section1.checks, 's1');
 
   if (data.pageDiscovery.skipped) {
-    document.getElementById('discovery-caption').textContent = 'Could not run — the homepage was unreachable, so its navigation links could not be parsed.';
+    document.getElementById('discovery-caption').textContent = 'Could not run — the homepage could not be loaded, so its navigation was never parsed. These pages may well exist; their absence here is not a finding.';
   }
   document.getElementById('discovery-table').innerHTML = renderChecksTable(data.pageDiscovery.categories, 'disc');
 

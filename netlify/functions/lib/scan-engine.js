@@ -12,11 +12,72 @@ const USER_AGENTS = {
   bare: { label: 'Plain Default UA', ua: 'GEO-Scanner/1.0' }
 };
 
-const FETCH_TIMEOUT_MS = 9000;
+// 20s, not 9s. Measured against real client hosting: a modest shared host serving a heavy
+// WordPress homepage answers in ~2s uncontended but degrades past 10s under even mild
+// concurrency. A 9s ceiling turned "slow" into "unreachable", which the scoring layer then
+// treated as a hard failure — the single largest source of false results this tool produced.
+const FETCH_TIMEOUT_MS = 20000;
+
+// Never open more than this many sockets against one origin at once. See runScan for the
+// measurements behind the number: on a serialising shared host, response time scaled roughly
+// linearly with concurrency (1 req ≈ 2.0s, 3 ≈ 5.1s, 5 ≈ 10.3s) until every request in a
+// 7-wide burst timed out — while the same requests issued two-at-a-time all succeeded. The
+// scan is a diagnostic, not a load test; it must not create the condition it reports on.
+const MAX_CONCURRENT_FETCHES = 2;
+
+// Small gap between waves. Costs a second or two overall and keeps us clearly under the
+// request-rate thresholds that make WAFs and fail2ban-style tools start refusing connections.
+const INTER_WAVE_DELAY_MS = 250;
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// Runs fn over items with a hard concurrency ceiling, preserving input order in the results.
+async function mapLimited(items, fn, limit = MAX_CONCURRENT_FETCHES) {
+  const results = new Array(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const i = next++;
+      results[i] = await fn(items[i], i);
+      if (next < items.length) await sleep(INTER_WAVE_DELAY_MS);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
+// Node's fetch rejects with a bare "fetch failed" for everything from a refused connection to
+// an expired certificate; the real reason is on err.cause.code. Without this, a Cloudflare bot
+// rule refusing our egress IP and a slow server timing out were indistinguishable in the
+// report — they need completely different advice, so they must be told apart here.
+const FETCH_ERROR_KINDS = {
+  ECONNREFUSED: { kind: 'refused', label: 'connection refused by the server' },
+  ECONNRESET: { kind: 'refused', label: 'connection reset by the server' },
+  ENOTFOUND: { kind: 'dns', label: 'hostname did not resolve (DNS)' },
+  EAI_AGAIN: { kind: 'dns', label: 'temporary DNS resolution failure' },
+  ENETUNREACH: { kind: 'network', label: 'network unreachable from the scanner' },
+  EHOSTUNREACH: { kind: 'network', label: 'host unreachable from the scanner' },
+  EPROTO: { kind: 'tls', label: 'TLS/SSL protocol error' },
+  CERT_HAS_EXPIRED: { kind: 'tls', label: 'the site\'s TLS certificate has expired' },
+  UNABLE_TO_VERIFY_LEAF_SIGNATURE: { kind: 'tls', label: 'incomplete TLS certificate chain' },
+  DEPTH_ZERO_SELF_SIGNED_CERT: { kind: 'tls', label: 'self-signed TLS certificate' },
+  UND_ERR_CONNECT_TIMEOUT: { kind: 'timeout', label: 'connection attempt timed out' }
+};
+
+function classifyFetchError(err, timedOut, ms) {
+  if (timedOut) {
+    return { kind: 'timeout', code: 'TIMEOUT', label: `no response within ${Math.round(ms / 1000)}s` };
+  }
+  const code = err?.cause?.code || err?.code || null;
+  const mapped = code ? FETCH_ERROR_KINDS[code] : null;
+  if (mapped) return { kind: mapped.kind, code, label: mapped.label };
+  return { kind: 'unknown', code: code || null, label: err?.cause?.message || err?.message || 'unknown network error' };
+}
 
 async function fetchSafe(url, uaString, timeoutMs = FETCH_TIMEOUT_MS) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let timedOut = false;
+  const timer = setTimeout(() => { timedOut = true; controller.abort(); }, timeoutMs);
   const started = Date.now();
   try {
     const res = await fetch(url, {
@@ -27,10 +88,19 @@ async function fetchSafe(url, uaString, timeoutMs = FETCH_TIMEOUT_MS) {
     const text = await res.text();
     return { ok: true, status: res.status, headers: res.headers, text, ms: Date.now() - started };
   } catch (err) {
-    return { ok: false, status: 0, headers: null, text: '', ms: Date.now() - started, error: err.message };
+    const ms = Date.now() - started;
+    const cls = classifyFetchError(err, timedOut, ms);
+    return { ok: false, status: 0, headers: null, text: '', ms, error: cls.label, errorCode: cls.code, errorKind: cls.kind };
   } finally {
     clearTimeout(timer);
   }
+}
+
+// A failure that says nothing about the site itself, only about our ability to reach it from
+// this particular network. These must never be scored as site defects — a refused connection
+// is most often a WAF rejecting our cloud egress IP, and the site works fine for everyone else.
+function isTransportFailure(res) {
+  return !res.ok && ['refused', 'dns', 'network', 'tls', 'timeout', 'unknown'].includes(res.errorKind);
 }
 
 function normalizeUrl(input) {
@@ -44,12 +114,24 @@ function normalizeUrl(input) {
 async function checkRobots(origin) {
   const robotsUrl = origin + '/robots.txt';
   const res = await fetchSafe(robotsUrl, USER_AGENTS.browser.ua);
-  if (!res.ok || res.status >= 400) {
+  // A genuine 404 and a refused connection are completely different findings. The first means
+  // "no rules, all bots allowed" (benign). The second means we learned nothing at all.
+  if (isTransportFailure(res)) {
+    return {
+      id: 'robots-txt',
+      title: 'robots.txt',
+      status: 'INCONCLUSIVE',
+      detail: `Could not reach robots.txt — ${res.error}. This says nothing about the file itself; the scanner could not complete a request to this origin.`,
+      howToFix: 'No action implied for the site. Re-run the scan, and if it persists, fetch this URL manually from a browser to confirm whether the file exists.',
+      raw: { url: robotsUrl, errorKind: res.errorKind, errorCode: res.errorCode }
+    };
+  }
+  if (res.status >= 400) {
     return {
       id: 'robots-txt',
       title: 'robots.txt',
       status: 'WARNING',
-      detail: res.status >= 400 ? `robots.txt returned HTTP ${res.status} — no explicit rules found, so all bots are implicitly allowed.` : `Could not fetch robots.txt (${res.error || 'unknown error'}).`,
+      detail: `robots.txt returned HTTP ${res.status} — no explicit rules found, so all bots are implicitly allowed.`,
       howToFix: 'Not necessarily a problem — a missing robots.txt means all bots are allowed by default. If you want explicit control (declaring a sitemap, blocking specific paths), add a robots.txt file at the site root.',
       raw: { url: robotsUrl, status: res.status }
     };
@@ -80,36 +162,80 @@ async function checkRobots(origin) {
   };
 }
 
-async function checkMultiUA(pageUrl) {
-  const entries = Object.entries(USER_AGENTS);
-  // One fetch per user-agent, run in parallel — the browser-UA response is reused as the
-  // homepage source for every other check, so the homepage is never fetched twice.
-  const raw = await Promise.all(entries.map(async ([key, cfg]) => {
-    const r = await fetchSafe(pageUrl, cfg.ua);
-    return { key, cfg, r };
+// The browser-UA result is passed in rather than fetched again: runScan already makes exactly
+// one isolated browser-UA request to time the homepage, and that response doubles as both the
+// crawl-test baseline and the HTML source for every on-page check. The remaining user-agents
+// are then issued at MAX_CONCURRENT_FETCHES, never as one burst.
+//
+// The verdict logic is deliberately conservative. A bot user-agent is only reported as blocked
+// when the server answered with an explicit refusal status while the browser UA succeeded —
+// that combination is a deliberate server decision. A timeout or a dropped connection is not
+// evidence of bot-blocking; it is evidence of an unreliable connection, and treating the two as
+// equivalent is what previously let one stray timeout gate an entire scan.
+const EXPLICIT_BLOCK_STATUSES = new Set([401, 403, 405, 429, 451]);
+
+async function checkMultiUA(pageUrl, browserFetch) {
+  const others = Object.entries(USER_AGENTS).filter(([key]) => key !== 'browser');
+  const fetched = await mapLimited(others, async ([key, cfg]) => ({ key, cfg, r: await fetchSafe(pageUrl, cfg.ua) }));
+  const raw = [{ key: 'browser', cfg: USER_AGENTS.browser, r: browserFetch }, ...fetched];
+
+  const results = raw.map(({ key, cfg, r }) => ({
+    key, label: cfg.label, ua: cfg.ua, status: r.status, ok: r.ok, ms: r.ms,
+    bodyLength: r.text.length, error: r.error, errorKind: r.errorKind,
+    explicitlyBlocked: EXPLICIT_BLOCK_STATUSES.has(r.status),
+    serverError: r.status >= 500,
+    transportFailed: isTransportFailure(r)
   }));
-  const results = raw.map(({ key, cfg, r }) => ({ key, label: cfg.label, ua: cfg.ua, status: r.status, ok: r.ok, ms: r.ms, bodyLength: r.text.length, blocked: !r.ok || r.status === 403 || r.status === 429 || r.status >= 500, error: r.error }));
-  const browserFetch = raw.find(x => x.key === 'browser').r;
+
   const baseline = results.find(r => r.key === 'browser');
-  const blockedBots = results.filter(r => r.key !== 'browser' && r.blocked);
-  const suspiciousSizeDiff = results.filter(r => r.key !== 'browser' && r.ok && baseline?.ok && baseline.bodyLength > 0 && Math.abs(r.bodyLength - baseline.bodyLength) / baseline.bodyLength > 0.6);
+  const bots = results.filter(r => r.key !== 'browser');
+
+  // Baseline itself failed at the transport layer: we learned nothing about bot access at all.
+  // runScan turns this into the site-reachability check instead of a verdict about the site.
+  if (baseline.transportFailed) {
+    return {
+      check: {
+        id: 'multi-ua',
+        title: 'Multi-user-agent crawl test',
+        status: 'INCONCLUSIVE',
+        detail: `No user-agent completed a request, including a plain browser UA (${baseline.error}). Because the control request failed too, this tells us nothing about whether AI crawlers specifically are blocked — only that the scanner could not reach the origin.`,
+        howToFix: 'See the site-reachability check for what could be determined about connectivity. Do not treat this as evidence of bot-blocking.',
+        raw: { results }
+      },
+      unreachable: true,
+      errorKinds: results.map(r => r.errorKind).filter(Boolean),
+      sampleError: baseline.error
+    };
+  }
+
+  const explicitBlocks = bots.filter(b => b.explicitlyBlocked);
+  const serverErrors = bots.filter(b => b.serverError);
+  const flaky = bots.filter(b => b.transportFailed);
+  const suspiciousSizeDiff = bots.filter(b => b.ok && baseline.bodyLength > 0 && Math.abs(b.bodyLength - baseline.bodyLength) / baseline.bodyLength > 0.6);
+
   let status = 'PASS';
   let detail = 'All tested user-agents (browser, GPTBot, ClaudeBot, Googlebot, plain default) received the same, successful response.';
   let howToFix;
-  if (!baseline?.ok) {
+
+  if (explicitBlocks.length) {
     status = 'FAIL';
-    detail = `The homepage did not respond at all for any user-agent, including a plain browser UA (${baseline?.error || 'no response'}). The site itself is unreachable right now — this blocks every crawler, not just AI bots.`;
-    howToFix = 'Confirm the site is actually up (try loading it in a browser right now) and check hosting/server status. If it loads fine for you, the server may be rejecting automated requests entirely — check firewall/WAF logs.';
-  } else if (blockedBots.length) {
-    status = 'FAIL';
-    detail = `Blocked or errored for: ${blockedBots.map(b => `${b.label} (HTTP ${b.status || 'no response'})`).join(', ')} while the browser UA succeeded (HTTP ${baseline?.status}). This points to server-level bot-blocking (firewall/WAF rule, hosting panel "block bad bots" setting) — the exact failure mode a manual check is slow to diagnose.`;
+    detail = `The server explicitly refused: ${explicitBlocks.map(b => `${b.label} (HTTP ${b.status})`).join(', ')}, while the browser UA succeeded (HTTP ${baseline.status}). An explicit refusal status alongside a working browser request is a deliberate server-side decision to reject these crawlers.`;
     howToFix = 'Check your hosting firewall/WAF and any "block bad bots" or bot-fight-mode settings in your hosting control panel or CDN (Cloudflare, Sucuri, etc) — these often block AI crawler user-agents by default under generic bot-protection rules. Add GPTBot, ClaudeBot, and Googlebot to an allowlist.';
+  } else if (serverErrors.length) {
+    status = 'WARNING';
+    detail = `Server errors for: ${serverErrors.map(b => `${b.label} (HTTP ${b.status})`).join(', ')} while the browser UA succeeded. A 5xx is more likely a server fault than a deliberate block, but it keeps these crawlers out just as effectively.`;
+    howToFix = 'Check server error logs for requests carrying these user-agent strings — an application error triggered only for certain UAs often points at bot-detection middleware failing rather than rejecting cleanly.';
+  } else if (flaky.length) {
+    status = 'WARNING';
+    detail = `Connection did not complete for: ${flaky.map(b => `${b.label} (${b.error})`).join(', ')}, though the browser UA succeeded. This is not treated as evidence of bot-blocking — a server would signal that with a refusal status, not a dropped connection — but it is worth a re-run to see whether it repeats.`;
+    howToFix = 'Re-run the scan. If the same user-agents fail repeatedly while the browser UA keeps succeeding, investigate rate limiting or connection-level filtering at the host or CDN.';
   } else if (suspiciousSizeDiff.length) {
     status = 'WARNING';
     detail = `Response size differs sharply by user-agent for: ${suspiciousSizeDiff.map(b => b.label).join(', ')} — worth a manual look in case a bot is served a stripped-down or cloaked page.`;
     howToFix = 'Confirm you\'re not unintentionally serving different content by user-agent (cloaking, which AI engines and search engines both penalize) — check for caching layers or bot-detection middleware that could be altering the response for specific UAs.';
   }
-  return { check: { id: 'multi-ua', title: 'Multi-user-agent crawl test', status, detail, howToFix, raw: { results } }, browserFetch };
+
+  return { check: { id: 'multi-ua', title: 'Multi-user-agent crawl test', status, detail, howToFix, raw: { results } }, unreachable: false };
 }
 
 function checkXRobotsTag(headers) {
@@ -154,8 +280,11 @@ function checkNoindexMeta($) {
 async function checkSitemap(origin) {
   const sitemapUrl = origin + '/sitemap.xml';
   const res = await fetchSafe(sitemapUrl, USER_AGENTS.browser.ua);
-  if (!res.ok || res.status >= 400) {
-    return { id: 'sitemap', title: 'sitemap.xml', status: 'WARNING', detail: `sitemap.xml not found or unreachable (HTTP ${res.status || 'no response'}). Not fatal, but a missing sitemap makes discovery slower for every crawler.`, howToFix: 'Generate a sitemap.xml (most CMS/SEO plugins like Yoast, RankMath, or a static site generator can do this automatically) and reference it in robots.txt.', raw: { url: sitemapUrl, status: res.status } };
+  if (isTransportFailure(res)) {
+    return { id: 'sitemap', title: 'sitemap.xml', status: 'INCONCLUSIVE', detail: `Could not reach sitemap.xml — ${res.error}. Whether a sitemap exists is unknown; the scanner could not complete a request to this origin.`, howToFix: 'No action implied for the site. Re-run the scan, or open this URL manually to confirm.', raw: { url: sitemapUrl, errorKind: res.errorKind, errorCode: res.errorCode } };
+  }
+  if (res.status >= 400) {
+    return { id: 'sitemap', title: 'sitemap.xml', status: 'WARNING', detail: `sitemap.xml not found (HTTP ${res.status}). Not fatal, but a missing sitemap makes discovery slower for every crawler.`, howToFix: 'Generate a sitemap.xml (most CMS/SEO plugins like Yoast, RankMath, or a static site generator can do this automatically) and reference it in robots.txt.', raw: { url: sitemapUrl, status: res.status } };
   }
   const looksXml = /^\s*<\?xml/i.test(res.text) || /<urlset/i.test(res.text) || /<sitemapindex/i.test(res.text);
   if (!looksXml) {
@@ -188,26 +317,40 @@ async function checkSitemap(origin) {
 // function — the isolated fetch plus the rest of the pipeline can genuinely take longer than a
 // regular synchronous function's ~10s execution ceiling on a slow site, and a slow site is
 // exactly the case this check needs to report honestly rather than crash on.
-function checkResponseTime(timingFetch) {
-  const ms = timingFetch.ms;
-  const speedFix = 'Check for unoptimized images, unminified CSS/JS, or missing caching — consider running the page through Google PageSpeed Insights for a detailed breakdown of exactly what\'s slow.';
-  const sampleNote = 'Measured as a single isolated request, with nothing else contending for the origin at the same time — more trustworthy than a request fired alongside a burst of others, but still just one sample. Treat it as a directional signal, not a precise measurement; for an authoritative, repeated-sample breakdown, cross-check with Google PageSpeed Insights.';
+// Threshold sits at 2500ms rather than 2000ms, and the input is the fastest of two isolated
+// samples rather than a single one. Both changes exist for the same reason: a continuous
+// measurement scored against a hard boundary flaps. A real client site answering at ~2.0-2.3s
+// was crossing the old 2000ms line between consecutive scans and moving the crawlability score
+// 94 → 100 with nothing about the site having changed. Taking the best of two samples reports
+// the server's uncontended capability and discards a one-off blip; the wider band keeps typical
+// hosting clear of the edge. Re-audits compare like with like, which is the whole point.
+const SLOW_RESPONSE_MS = 2500;
 
+function checkResponseTime(timingFetch, timingSamples) {
+  const okSamples = (timingSamples || []).filter(s => s.ok).map(s => s.ms);
+  const ms = okSamples.length ? Math.min(...okSamples) : timingFetch.ms;
+  const speedFix = 'Check for unoptimized images, unminified CSS/JS, or missing caching — consider running the page through Google PageSpeed Insights for a detailed breakdown of exactly what\'s slow.';
+  const sampleNote = `Fastest of ${okSamples.length || 1} isolated request(s), each issued with nothing else contending for the origin. This measures the server's uncontended capability and is stable enough to compare across re-audits, but it is not a full performance profile — cross-check with Google PageSpeed Insights for a repeated-sample breakdown.`;
+
+  // Speed is unmeasurable without a completed request. This previously returned FAIL, which
+  // then tripped the critical-fail gate and clamped the whole scan — meaning a network problem
+  // on our side published itself as a verdict about the client's site. It is now INCONCLUSIVE
+  // and carries no score, in either direction.
   if (!timingFetch.ok) {
     return {
       id: 'response-time',
       title: 'Response time (single-request sample)',
-      status: 'FAIL',
-      detail: `Homepage did not respond within ${Math.round(ms / 1000)}s (${timingFetch.error || 'no response'}), even in isolation with nothing else contending for the server. Treat this as a hard crawlability failure, not just a slow page.`,
-      howToFix: speedFix,
-      raw: { ms, error: timingFetch.error }
+      status: 'INCONCLUSIVE',
+      detail: `Response time could not be measured — ${timingFetch.error}. No timing conclusion can be drawn from a request that never completed.`,
+      howToFix: 'No action implied for the site. See the site-reachability check for what the scanner was able to determine about connectivity.',
+      raw: { ms: timingFetch.ms, error: timingFetch.error, errorKind: timingFetch.errorKind, errorCode: timingFetch.errorCode }
     };
   }
 
-  // Slow-but-reachable deliberately caps at WARNING, never FAIL — a single timing sample
-  // shouldn't be able to gate the whole crawlability score the way a genuine block or a fully
-  // unreachable homepage does. FAIL above is reserved for the site not responding at all.
-  const status = ms > 2000 ? 'WARNING' : 'PASS';
+  // Slow-but-reachable caps at WARNING, never FAIL. A timing sample should not be able to gate
+  // anything — and with the timeout now at 20s, genuinely slow sites land here and get reported
+  // as slow, instead of being silently reclassified as unreachable at the 9s mark.
+  const status = ms > SLOW_RESPONSE_MS ? 'WARNING' : 'PASS';
   const detail = status === 'WARNING'
     ? `Homepage took ${ms}ms to respond — on the slow side. ${sampleNote}`
     : `Homepage responded in ${ms}ms. ${sampleNote}`;
@@ -219,6 +362,85 @@ function checkResponseTime(timingFetch) {
     detail,
     howToFix: status === 'WARNING' ? speedFix : undefined,
     raw: { ms }
+  };
+}
+
+// ── Site reachability ──
+// Replaces the old implicit "multi-UA said everything failed, so the site is down" inference.
+// When every user-agent fails with a transport error, the honest report is that the scanner
+// could not reach the origin — the site may well be fine for everyone else, which is exactly
+// what happened on a Cloudflare-fronted client site that scored 23/100 while serving traffic
+// normally. The advice depends entirely on the error kind, so it branches on that.
+function buildUnreachableCheck(kinds, sampleError) {
+  const kindSet = new Set(kinds);
+  let detail = `The scanner could not complete a request to this site from its network (${sampleError}).`;
+  let howToFix;
+
+  if (kindSet.has('refused')) {
+    detail += ' A refused or reset connection is characteristic of edge bot-protection rejecting the scanner\'s cloud IP — not of a site being down. Sites in this state usually serve normal visitors without any issue.';
+    howToFix = 'Confirm the site loads in a browser (it very likely does). Then check for edge bot protection — Cloudflare Security → Bots, or the equivalent WAF/"block bad bots" setting at your host — and allowlist the scanner before re-running. No on-site change should be made on the strength of this result.';
+  } else if (kindSet.has('dns')) {
+    detail += ' The hostname did not resolve, which points at a DNS problem rather than the web server.';
+    howToFix = 'Verify the domain\'s DNS records are published and the hostname is spelled correctly, including the www/non-www form.';
+  } else if (kindSet.has('tls')) {
+    detail += ' The TLS handshake failed, so the connection never reached the application.';
+    howToFix = 'Check the site\'s TLS certificate — expiry, hostname mismatch, or an incomplete intermediate chain. Note that browsers tolerate some chain problems that automated clients and crawlers reject.';
+  } else if (kindSet.has('timeout')) {
+    detail += ` Every request was still unanswered after ${Math.round(FETCH_TIMEOUT_MS / 1000)}s. The server is reachable in principle but not responding in a workable time.`;
+    howToFix = 'Check server load and hosting resources. A site this slow is a genuine crawlability problem: AI crawlers and search engines both abandon requests well before this point.';
+  } else {
+    howToFix = 'Confirm the site loads in a browser, then re-run the scan. If it succeeds on retry, the original failure was transient and can be disregarded.';
+  }
+
+  return {
+    id: 'site-reachability',
+    title: 'Site reachability from the scanner',
+    status: 'INCONCLUSIVE',
+    detail,
+    howToFix,
+    raw: { errorKinds: Array.from(kindSet) }
+  };
+}
+
+// ── Edge protection / CDN fingerprint ──
+// Our user-agent test cannot settle whether AI crawlers are blocked at a CDN edge, because
+// Cloudflare and similar services identify verified bots by source IP range, not by UA string.
+// Spoofing GPTBot's UA from any other network sails straight through. Rather than let that gap
+// sit silently behind a PASS, name it and hand over a concrete manual check.
+const EDGE_PROVIDERS = [
+  { id: 'cloudflare', label: 'Cloudflare', test: h => /cloudflare/i.test(h.server || '') || !!h['cf-ray'], where: 'Cloudflare dashboard → Security → Bots' },
+  { id: 'sucuri', label: 'Sucuri', test: h => /sucuri/i.test(h.server || '') || !!h['x-sucuri-id'], where: 'Sucuri dashboard → Firewall → Access Control' },
+  { id: 'akamai', label: 'Akamai', test: h => /akamai/i.test(h.server || '') || !!h['x-akamai-transformed'], where: 'Akamai Bot Manager configuration' },
+  { id: 'fastly', label: 'Fastly', test: h => /fastly/i.test(h.server || '') || !!h['x-served-by'] && /fastly/i.test(h['x-served-by'] || ''), where: 'Fastly service configuration' },
+  { id: 'imperva', label: 'Imperva / Incapsula', test: h => !!h['x-iinfo'] || /incap/i.test(h['x-cdn'] || ''), where: 'Imperva Bot Protection settings' }
+];
+
+function checkEdgeProtection(headers) {
+  if (!headers) return null;
+  const h = {};
+  try { headers.forEach((v, k) => { h[k.toLowerCase()] = v; }); } catch { return null; }
+
+  const found = EDGE_PROVIDERS.filter(p => { try { return p.test(h); } catch { return false; } });
+  if (!found.length) {
+    return {
+      id: 'edge-protection',
+      title: 'Edge bot protection (CDN/WAF)',
+      status: 'PASS',
+      detail: 'No CDN or WAF fingerprint detected in the response headers, so no edge-level AI crawler blocking is likely to be in play.',
+      raw: { providers: [] }
+    };
+  }
+
+  const names = found.map(p => p.label).join(', ');
+  const botManaged = found.some(p => p.id === 'cloudflare') && !!h['set-cookie'] && /__cf_bm/i.test(h['set-cookie']);
+
+  return {
+    id: 'edge-protection',
+    title: 'Edge bot protection (CDN/WAF)',
+    status: 'INCONCLUSIVE',
+    detail: `This site is served through ${names}${botManaged ? ', with bot management actively running (a __cf_bm token was issued on this request)' : ''}. Edge services identify AI crawlers by source IP range, not by user-agent string, so the user-agent test above cannot confirm whether GPTBot or ClaudeBot are actually allowed through — a UA test passes regardless. This requires manual verification and is reported as unverified rather than as a pass.`,
+    howToFix: `Verify AI crawler access directly in ${found.map(p => p.where).join(' / ')}. Look specifically for an AI-scrapers or bot-fight setting: these can block AI crawlers at the edge independently of robots.txt, and on some providers newer domains have it enabled by default without the owner choosing it. Note that training crawlers (GPTBot, ClaudeBot) and retrieval bots (OAI-SearchBot, ChatGPT-User, PerplexityBot) are often governed by separate toggles — for AI visibility the retrieval bots matter most.`,
+    raw: { providers: found.map(p => p.id), botManagementCookie: botManaged, server: h.server || null }
   };
 }
 
@@ -525,6 +747,52 @@ function checkContactMachineReadability($, mainText) {
   };
 }
 
+// 5. JS-rendering dependency.
+// Everything else in this file parses the raw HTML the server returned — exactly what a
+// non-rendering crawler receives. If a site ships an empty shell and paints its content with
+// JavaScript, that crawler sees nothing, and this tool would otherwise report the resulting
+// emptiness as a dozen unrelated on-page failures (no h1, thin content, no schema) instead of
+// naming the one root cause. Server-side rendering fixes it, which makes this an on-page,
+// fixable finding rather than an infrastructure one.
+const SPA_MOUNT_SELECTORS = ['#root', '#app', '#__next', '#__nuxt', '[data-reactroot]', '[data-server-rendered]', 'astro-island'];
+
+function checkJsRendering($, mainText, html) {
+  const words = mainText.split(/\s+/).filter(Boolean).length;
+  const scriptCount = $('script[src]').length;
+  const mountEl = SPA_MOUNT_SELECTORS.find(sel => { try { return $(sel).length > 0; } catch { return false; } });
+  // A mount node that arrives already populated means the framework server-rendered it — the
+  // presence of #root or #__next alone proves nothing, so measure what's actually inside it.
+  const mountText = mountEl ? $(mountEl).text().replace(/\s+/g, ' ').trim().split(/\s+/).filter(Boolean).length : null;
+  const hasNoscriptWarning = /enable\s+javascript|requires\s+javascript|javascript\s+(?:to|is)\s+(?:run|required)/i.test($('noscript').text() || '');
+
+  const shellLike = words < 60 && scriptCount > 0 && html.length > 500;
+  const emptyMount = mountEl && mountText !== null && mountText < 30;
+
+  if (!shellLike && !emptyMount && !(hasNoscriptWarning && words < 150)) {
+    return {
+      id: 'js-rendering',
+      title: 'Content visible without JavaScript',
+      status: 'PASS',
+      detail: `The server returns ${words} words of readable content before any JavaScript runs, so non-rendering crawlers can read this page.`,
+      raw: { serverRenderedWords: words, mountElement: mountEl || null, scriptCount }
+    };
+  }
+
+  const evidence = [];
+  if (shellLike) evidence.push(`only ${words} words of text in the server response alongside ${scriptCount} script file(s)`);
+  if (emptyMount) evidence.push(`the ${mountEl} mount point is empty (${mountText} words)`);
+  if (hasNoscriptWarning) evidence.push('a <noscript> block telling visitors to enable JavaScript');
+
+  return {
+    id: 'js-rendering',
+    title: 'Content visible without JavaScript',
+    status: 'FAIL',
+    detail: `This page appears to render its content client-side — ${evidence.join(', ')}. Crawlers that do not execute JavaScript receive an effectively blank page. Treat the other on-page results for this page as unreliable: checks reporting missing headings, thin content or absent schema are most likely observing the empty shell rather than the real page.`,
+    howToFix: 'Server-side render this page, or pre-render it at build time, so the HTML response contains the content itself. Most AI crawlers do not execute JavaScript, which makes this the single highest-impact on-page fix available — every other GEO signal on the page is invisible until it is resolved.',
+    raw: { serverRenderedWords: words, mountElement: mountEl || null, mountWords: mountText, scriptCount, hasNoscriptWarning }
+  };
+}
+
 function analyzePage(pageUrl, html) {
   const $ = cheerio.load(html);
   const title = $('title').first().text().trim();
@@ -556,7 +824,7 @@ function analyzePage(pageUrl, html) {
   checks.push({ id: 'image-alt', title: 'Image alt text coverage', status: images.total === 0 ? 'PASS' : (images.pct >= 80 ? 'PASS' : images.pct >= 40 ? 'WARNING' : 'FAIL'), detail: images.total === 0 ? 'No <img> tags on this page.' : `${images.withAlt}/${images.total} images (${images.pct}%) have non-empty alt text.`, howToFix: (images.total === 0 || images.pct >= 80) ? undefined : 'Add descriptive alt text to images missing it — this helps both accessibility tools and AI engines understand image content, especially on product/service pages.', raw: images });
   // Added checks (page discovery add-on) — each returns null when not applicable to this page
   // (e.g. no FAQ schema present) rather than forcing an irrelevant row.
-  [checkFaqSchemaMatch($, mainText), checkAuthorAttribution($, mainText), checkFirstWordsSpecificity(mainText), checkContactMachineReadability($, mainText)]
+  [checkJsRendering($, mainText, html), checkFaqSchemaMatch($, mainText), checkAuthorAttribution($, mainText), checkFirstWordsSpecificity(mainText), checkContactMachineReadability($, mainText)]
     .filter(Boolean)
     .forEach(c => checks.push(c));
 
@@ -710,7 +978,10 @@ function analyzeContentSpecificity(pages) {
   const boilerplateCheck = {
     id: 'boilerplate',
     title: 'Boilerplate / templated content',
-    status: boilerplatePairs.length ? 'WARNING' : 'PASS',
+    // With fewer than two pages there is nothing to compare, so this cannot pass or fail. It
+    // used to return PASS regardless, which handed a full-marks check to scans that analysed no
+    // pages at all — inflating the total on exactly the runs that had measured the least.
+    status: pages.length < 2 ? 'INCONCLUSIVE' : (boilerplatePairs.length ? 'WARNING' : 'PASS'),
     detail: boilerplatePairs.length
       ? `${boilerplatePairs.length} page pair(s) share heavily overlapping content (${boilerplatePairs.map(p => p.similarity + '%').join(', ')}) — a sign of templated, low-value pages (this is exactly the pattern found in directory-listing-style sites).`
       : (pages.length > 1 ? 'No significant content overlap detected between the scanned pages.' : 'Only one page was available to compare — automatic key-page discovery found no About/FAQ/Contact/Services/Blog page, and no additional pages were provided manually. Add pages via the Advanced section, or check that the site\'s navigation uses standard link text/URL patterns.'),
@@ -723,55 +994,86 @@ function analyzeContentSpecificity(pages) {
 
 // ── Scoring ──
 
+const SCORE_POINTS = { PASS: 100, WARNING: 55, FAIL: 0 };
+
+// INCONCLUSIVE checks are dropped from the denominator entirely — they are neither credited nor
+// penalised. Scoring "we could not measure this" as zero was what let a network failure on our
+// side publish itself as a verdict about the client's site.
 function scoreChecks(checks) {
-  if (!checks.length) return null;
-  const points = { PASS: 100, WARNING: 55, FAIL: 0 };
-  const total = checks.reduce((sum, c) => sum + points[c.status], 0);
-  return Math.round(total / checks.length);
+  const scorable = (checks || []).filter(c => c && SCORE_POINTS[c.status] !== undefined);
+  if (!scorable.length) return null;
+  return Math.round(scorable.reduce((sum, c) => sum + SCORE_POINTS[c.status], 0) / scorable.length);
 }
 
-function computeScore(section1Checks, section2Pages, section4Pages, section3) {
-  const s1 = scoreChecks(section1Checks);
-  const s2Scores = section2Pages.map(p => scoreChecks(p.checks));
-  const s2 = s2Scores.length ? Math.round(s2Scores.reduce((a, b) => a + b, 0) / s2Scores.length) : null;
-  const s4Scores = section4Pages.map(p => scoreChecks(p.checks));
-  const s4 = s4Scores.length ? Math.round(s4Scores.reduce((a, b) => a + b, 0) / s4Scores.length) : null;
-  const s3AllChecks = [...section3.perPage.flatMap(p => p.checks), section3.boilerplateCheck];
-  const s3 = scoreChecks(s3AllChecks);
+function averagePageScores(pages) {
+  const scores = pages.map(p => scoreChecks(p.checks)).filter(s => s !== null);
+  return scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null;
+}
 
-  const criticalFails = section1Checks.filter(c => c.status === 'FAIL');
-  const weights = { section1: 0.45, section2: 0.25, section4: 0.20, section3: 0.10 };
-  let overall = Math.round((s1 ?? 0) * weights.section1 + (s2 ?? 0) * weights.section2 + (s4 ?? 0) * weights.section4 + (s3 ?? 0) * weights.section3);
+// The headline number is now on-page readiness only — the things a client's web team can
+// actually change on the site, which is what this tool exists to produce. Crawlability is
+// reported alongside it as blockers rather than folded in: it is largely hosting and WAF
+// territory, it is the least reliable thing to measure remotely, and every false result this
+// tool has produced originated there. Letting it carry 45% of the score and clamp the total
+// meant infrastructure noise moved a number that is supposed to track on-page work.
+const ONPAGE_WEIGHTS = { onPage: 0.50, agenticBrowsing: 0.30, contentSpecificity: 0.20 };
 
-  let gated = false;
-  if (criticalFails.length > 0) {
-    gated = true;
-    overall = Math.min(overall, 25);
-  }
+function computeScore(section1Checks, section2Pages, section4Pages, section3, pagesAnalyzed) {
+  const crawlability = scoreChecks(section1Checks);
+  const onPage = averagePageScores(section2Pages);
+  const agenticBrowsing = averagePageScores(section4Pages);
+  const contentSpecificity = pagesAnalyzed > 0
+    ? scoreChecks([...section3.perPage.flatMap(p => p.checks), section3.boilerplateCheck])
+    : null;
+
+  // Weights are renormalised across whatever could actually be measured, so a missing section
+  // widens the error bar instead of dragging the score toward zero. If nothing was measurable,
+  // the score is null — the report says so rather than inventing a number.
+  const parts = [['onPage', onPage], ['agenticBrowsing', agenticBrowsing], ['contentSpecificity', contentSpecificity]]
+    .filter(([, v]) => v !== null);
+  const weightSum = parts.reduce((s, [k]) => s + ONPAGE_WEIGHTS[k], 0);
+  const overall = weightSum > 0
+    ? Math.round(parts.reduce((s, [k, v]) => s + v * ONPAGE_WEIGHTS[k], 0) / weightSum)
+    : null;
+
+  const blockers = section1Checks.filter(c => c.status === 'FAIL');
+  const unverified = section1Checks.filter(c => c.status === 'INCONCLUSIVE');
 
   return {
     overall,
-    gated,
-    sections: {
-      crawlability: s1,
-      onPage: s2,
-      agenticBrowsing: s4,
-      contentSpecificity: s3
-    },
-    criticalFailCount: criticalFails.length
+    scored: overall !== null,
+    pagesAnalyzed,
+    sections: { onPage, agenticBrowsing, contentSpecificity, crawlability },
+    blockers: { count: blockers.length, items: blockers.map(c => ({ id: c.id, title: c.title })) },
+    unverified: { count: unverified.length, items: unverified.map(c => ({ id: c.id, title: c.title })) },
+    // Recorded so a re-audit can tell a genuine change from a rubric change. Bump on any edit
+    // to SCORE_POINTS, ONPAGE_WEIGHTS, or which checks feed which section.
+    rubricVersion: 2
   };
 }
 
+// Unverified items are separated from real findings and sorted last. They are not defects and
+// must not be handed to a client as work to do — they are things the scan could not establish,
+// each carrying a manual check instead. Mixing them in with confirmed problems is how a scanner
+// limitation ends up on someone's remediation backlog.
 function buildPrioritizedFindings(section1Checks, pageDiscovery, section2Pages, section4Pages, section3) {
   const findings = [];
-  section1Checks.filter(c => c.status !== 'PASS').forEach(c => findings.push({ priority: 'critical', section: 'Crawlability', title: c.title, detail: c.detail, howToFix: c.howToFix }));
-  pageDiscovery.categories.filter(c => c.status !== 'PASS').forEach(c => findings.push({ priority: 'discovery', section: 'Key Page Discovery', title: c.title, detail: c.detail, howToFix: c.howToFix }));
-  section2Pages.forEach(p => p.checks.filter(c => c.status !== 'PASS').forEach(c => findings.push({ priority: 'on-page', section: 'On-Page GEO Signals', page: p.url, title: c.title, detail: c.detail, howToFix: c.howToFix })));
-  section4Pages.forEach(p => p.checks.filter(c => c.status !== 'PASS').forEach(c => findings.push({ priority: 'agentic', section: 'Agentic Browsing / AI Agent Accessibility', page: p.url, title: c.title, detail: c.detail, howToFix: c.howToFix })));
-  section3.perPage.forEach(p => p.checks.filter(c => c.status !== 'PASS').forEach(c => findings.push({ priority: 'content', section: 'Content Specificity', page: p.url, title: c.title, detail: c.detail, howToFix: c.howToFix })));
-  if (section3.boilerplateCheck.status !== 'PASS') findings.push({ priority: 'content', section: 'Content Specificity', title: section3.boilerplateCheck.title, detail: section3.boilerplateCheck.detail, howToFix: section3.boilerplateCheck.howToFix });
-  const order = { critical: 0, discovery: 1, 'on-page': 2, agentic: 3, content: 4 };
-  return findings.sort((a, b) => order[a.priority] - order[b.priority]);
+  const actionable = c => c.status === 'FAIL' || c.status === 'WARNING';
+
+  section1Checks.filter(actionable).forEach(c => findings.push({ priority: 'blocker', section: 'Crawlability', title: c.title, detail: c.detail, howToFix: c.howToFix, status: c.status }));
+  section2Pages.forEach(p => p.checks.filter(actionable).forEach(c => findings.push({ priority: 'on-page', section: 'On-Page GEO Signals', page: p.url, title: c.title, detail: c.detail, howToFix: c.howToFix, status: c.status })));
+  section4Pages.forEach(p => p.checks.filter(actionable).forEach(c => findings.push({ priority: 'agentic', section: 'Agentic Browsing / AI Agent Accessibility', page: p.url, title: c.title, detail: c.detail, howToFix: c.howToFix, status: c.status })));
+  section3.perPage.forEach(p => p.checks.filter(actionable).forEach(c => findings.push({ priority: 'content', section: 'Content Specificity', page: p.url, title: c.title, detail: c.detail, howToFix: c.howToFix, status: c.status })));
+  if (actionable(section3.boilerplateCheck)) findings.push({ priority: 'content', section: 'Content Specificity', title: section3.boilerplateCheck.title, detail: section3.boilerplateCheck.detail, howToFix: section3.boilerplateCheck.howToFix, status: section3.boilerplateCheck.status });
+  pageDiscovery.categories.filter(actionable).forEach(c => findings.push({ priority: 'discovery', section: 'Key Page Discovery', title: c.title, detail: c.detail, howToFix: c.howToFix, status: c.status }));
+
+  const unverified = [
+    ...section1Checks.filter(c => c.status === 'INCONCLUSIVE').map(c => ({ priority: 'unverified', section: 'Needs manual verification', title: c.title, detail: c.detail, howToFix: c.howToFix, status: c.status })),
+    ...pageDiscovery.categories.filter(c => c.status === 'INCONCLUSIVE').map(c => ({ priority: 'unverified', section: 'Needs manual verification', title: c.title, detail: c.detail, howToFix: c.howToFix, status: c.status }))
+  ];
+
+  const order = { blocker: 0, 'on-page': 1, agentic: 2, content: 3, discovery: 4, unverified: 5 };
+  return [...findings, ...unverified].sort((a, b) => order[a.priority] - order[b.priority]);
 }
 
 // ── Entry point ──
@@ -790,43 +1092,65 @@ export async function runScan({ url, extraPages }) {
     ? extraPages.filter(Boolean).slice(0, 5).map(p => { try { return new URL(p, origin).href; } catch { return null; } }).filter(Boolean)
     : [];
 
-  // Response time is measured FIRST and ALONE — awaited by itself before anything else touches
-  // the origin. Bundling it into the parallel wave below meant it was timed while 7 other
-  // requests hit the same server simultaneously, which is enough to trip rate limiting or just
-  // queue on modest hosting — producing wildly inconsistent readings for the same site between
-  // scans. This costs real wall-clock time, deliberately: accuracy here matters more than
-  // shaving seconds off the scan.
+  // ── Request pacing ──
+  // Every fetch below flows through mapLimited at MAX_CONCURRENT_FETCHES. The previous version
+  // issued eight requests as a single Promise.all burst, which on modest hosting is enough to
+  // make the origin fail outright: measured against a real client site, seven concurrent
+  // requests all timed out while the identical requests issued two-at-a-time each returned in
+  // ~2s. The scan was manufacturing the outage it then reported. Phases run in sequence so the
+  // ceiling holds across the whole pipeline, not just within one call.
+
+  // Phase 1 — one isolated request. Times the homepage with nothing else contending, and its
+  // response doubles as the crawl-test baseline and the HTML source for every on-page check, so
+  // the homepage is fetched exactly once.
   const timingFetch = await fetchSafe(homepageUrl, USER_AGENTS.browser.ua);
+  const homepageFetch = timingFetch;
 
-  // Everything else runs as ONE parallel wave — robots.txt, sitemap.xml, the 5-user-agent
-  // homepage test (whose browser-UA response is reused as the homepage source below, so the
-  // homepage's HTML is never fetched twice), and every extra page.
-  const [robotsResult, sitemapResult, multiUA, extraPageFetches] = await Promise.all([
-    checkRobots(origin),
-    checkSitemap(origin),
-    checkMultiUA(homepageUrl),
-    Promise.all(cleanExtraPages.map(async u => ({ url: u, ...(await fetchSafe(u, USER_AGENTS.browser.ua)) })))
-  ]);
+  // A second isolated timing sample, taken only when the first succeeded. checkResponseTime uses
+  // the faster of the two so a single blip can't move the score between re-audits. Its body is
+  // discarded — the first response remains the sole HTML source for every on-page check.
+  const timingSamples = [timingFetch];
+  if (timingFetch.ok) {
+    await sleep(INTER_WAVE_DELAY_MS);
+    timingSamples.push(await fetchSafe(homepageUrl, USER_AGENTS.browser.ua));
+  }
 
-  const homepageFetch = multiUA.browserFetch;
-  const section1Checks = [robotsResult];
+  // Phase 2 — the remaining four user-agents (paced internally by checkMultiUA).
+  const multiUA = await checkMultiUA(homepageUrl, homepageFetch);
 
+  // Phase 3 — robots.txt and sitemap.xml.
+  const [robotsResult, sitemapResult] = await mapLimited([() => checkRobots(origin), () => checkSitemap(origin)], fn => fn());
+
+  // Phase 4 — any manually supplied extra pages.
+  const extraPageFetches = await mapLimited(cleanExtraPages, async u => ({ url: u, ...(await fetchSafe(u, USER_AGENTS.browser.ua)) }));
+
+  const section1Checks = [];
   let $home = null;
+
   if (homepageFetch.ok) {
     $home = cheerio.load(homepageFetch.text);
+    const edgeCheck = checkEdgeProtection(homepageFetch.headers);
     section1Checks.push(
       multiUA.check,
+      robotsResult,
       checkXRobotsTag(homepageFetch.headers),
       checkNoindexMeta($home),
       sitemapResult,
-      checkResponseTime(timingFetch)
+      checkResponseTime(timingFetch, timingSamples)
     );
+    if (edgeCheck) section1Checks.push(edgeCheck);
   } else {
-    // Homepage never responded (timeout, DNS failure, connection refused, etc). That is itself
-    // the most severe possible Layer-1 finding — report it as one, rather than erroring the
-    // whole scan and telling the user nothing. X-Robots-Tag / noindex genuinely cannot be
-    // determined with no page fetched, so they're omitted rather than falsely marked PASS.
-    section1Checks.push(multiUA.check, sitemapResult, checkResponseTime(timingFetch));
+    // The homepage never responded. This is reported as a scanner-reachability result, not as a
+    // verdict about the site: a refused connection is most often edge bot protection rejecting
+    // our cloud egress IP, and the site is typically serving real visitors normally throughout.
+    // Checks that genuinely cannot be evaluated without HTML are omitted rather than guessed.
+    section1Checks.push(
+      buildUnreachableCheck(multiUA.errorKinds || [homepageFetch.errorKind], multiUA.sampleError || homepageFetch.error),
+      multiUA.check,
+      robotsResult,
+      sitemapResult,
+      checkResponseTime(timingFetch, timingSamples)
+    );
   }
 
   // Key Page Discovery: parse the homepage's nav/header/footer for About/FAQ/Contact/Services/
@@ -839,17 +1163,20 @@ export async function runScan({ url, extraPages }) {
   if ($home) {
     const categories = discoverKeyPages($home, homepageUrl);
     const toFetch = Object.values(categories).filter(c => c.found && !alreadyCovered.has(normalizeUrlForCompare(c.url)));
-    discoveredFetches = await Promise.all(toFetch.map(async c => ({ url: c.url, ...(await fetchSafe(c.url, USER_AGENTS.browser.ua)) })));
+    discoveredFetches = await mapLimited(toFetch, async c => ({ url: c.url, ...(await fetchSafe(c.url, USER_AGENTS.browser.ua)) }));
     pageDiscovery = { title: 'Key Page Discovery', skipped: false, categories: buildPageDiscoveryReport(categories, alreadyCovered) };
   } else {
     // Homepage was unreachable — there's no nav/header/footer to parse, so discovery can't run.
+    // Reported as unverified, not as missing pages: the pages may well exist. Previously these
+    // came back as WARNINGs, which put "add an About page" on the client's to-do list for a site
+    // whose navigation the scanner had simply never managed to load.
     pageDiscovery = {
       title: 'Key Page Discovery',
       skipped: true,
       categories: Object.entries(PAGE_DISCOVERY_PATTERNS).map(([id, cfg]) => ({
-        id, title: `${cfg.label} page`, status: 'WARNING', found: false, url: null,
-        detail: 'Could not check — the homepage was unreachable, so its navigation links could not be parsed.',
-        howToFix: undefined, raw: {}
+        id, title: `${cfg.label} page`, status: 'INCONCLUSIVE', found: null, url: null,
+        detail: `Could not check — the homepage could not be loaded, so its navigation links were never parsed. This does not mean the ${cfg.label} page is missing.`,
+        howToFix: 'Re-run once the site is reachable from the scanner.', raw: {}
       }))
     };
   }
@@ -871,12 +1198,23 @@ export async function runScan({ url, extraPages }) {
   const section2Pages = analyzedPages.map(p => ({ url: p.url, title: p.title, metaDescription: p.metaDescription, schemaTypes: p.schemaTypes, headingInfo: p.headingInfo, canonical: p.canonical, og: p.og, images: p.images, wordCount: p.wordCount, checks: p.checks }));
   const section4Pages = analyzedPages.map(p => ({ url: p.url, checks: p.agenticChecks }));
 
-  const score = computeScore(section1Checks, section2Pages, section4Pages, section3);
+  const score = computeScore(section1Checks, section2Pages, section4Pages, section3, analyzedPages.length);
   const prioritizedFindings = buildPrioritizedFindings(section1Checks, pageDiscovery, section2Pages, section4Pages, section3);
 
   return {
     scannedAt: new Date().toISOString(),
     input: { url: homepageUrl, extraPages: cleanExtraPages },
+    // Top-level scan state, so the UI never has to infer "did this work?" from a low number.
+    // reachable:false means the scanner could not load the site — there is no score to show and
+    // nothing in the report should be read as a judgement about the site's quality.
+    reachable: homepageFetch.ok,
+    scanQuality: {
+      pagesAnalyzed: analyzedPages.length,
+      pagesAttempted: pageFetches.length,
+      unverifiedChecks: section1Checks.filter(c => c.status === 'INCONCLUSIVE').length,
+      timeoutMs: FETCH_TIMEOUT_MS,
+      maxConcurrency: MAX_CONCURRENT_FETCHES
+    },
     skippedPages,
     score,
     section1: { title: 'Crawlability Layer', checks: section1Checks },
