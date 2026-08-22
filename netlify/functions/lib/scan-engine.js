@@ -9,6 +9,12 @@ const USER_AGENTS = {
   gptbot: { label: 'GPTBot', ua: 'Mozilla/5.0 (compatible; GPTBot/1.1; +https://openai.com/gptbot)' },
   claudebot: { label: 'ClaudeBot', ua: 'Mozilla/5.0 (compatible; ClaudeBot/1.0; +claudebot@anthropic.com)' },
   googlebot: { label: 'Googlebot', ua: 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)' },
+  // Retrieval bots — these fetch a page at the moment someone asks a question, and are what
+  // actually determine whether a site can be cited in an AI answer. A host-level rule that
+  // blocks by user-agent string (mod_security, Wordfence, a "bad bot" list) will refuse these
+  // outright, and that is worth catching even though it cannot detect IP-based edge blocking.
+  oaisearchbot: { label: 'OAI-SearchBot', ua: 'Mozilla/5.0 (compatible; OAI-SearchBot/1.0; +https://openai.com/searchbot)' },
+  perplexitybot: { label: 'PerplexityBot', ua: 'Mozilla/5.0 (compatible; PerplexityBot/1.0; +https://perplexity.ai/perplexitybot)' },
   bare: { label: 'Plain Default UA', ua: 'GEO-Scanner/1.0' }
 };
 
@@ -134,6 +140,45 @@ function normalizeUrl(input) {
 
 // ── Section 1: Crawlability ──
 
+// ── AI crawler taxonomy ──
+// The distinction that matters for GEO is training vs retrieval, and the old check collapsed it.
+//
+//   retrieval  — fetches a page live, at the moment someone asks a question. If these are blocked
+//                the site cannot appear in AI answers at all. This is the category that governs
+//                AI visibility, and blocking it is almost always accidental.
+//   training   — collects content for model training. Blocking these is a legitimate content
+//                licensing decision with a real but slower-acting visibility cost, so it is
+//                reported as a warning rather than a failure.
+//   search     — conventional search crawling, still the substrate for several AI surfaces.
+//
+// Google-Extended deserves specific mention: it governs whether Google may use the site for
+// Gemini and Vertex grounding, it is not a crawler in its own right, and the one-click "block AI
+// crawlers" toggles in Yoast and RankMath set it. Owners routinely enable that without realising
+// they have removed themselves from Gemini. It is invisible in a browser and easy to miss by
+// hand — exactly the failure this tool exists to surface.
+const AI_CRAWLERS = [
+  { token: 'OAI-SearchBot', label: 'OAI-SearchBot', engine: 'ChatGPT', category: 'retrieval' },
+  { token: 'ChatGPT-User', label: 'ChatGPT-User', engine: 'ChatGPT', category: 'retrieval' },
+  { token: 'Claude-User', label: 'Claude-User', engine: 'Claude', category: 'retrieval' },
+  { token: 'Claude-SearchBot', label: 'Claude-SearchBot', engine: 'Claude', category: 'retrieval' },
+  { token: 'PerplexityBot', label: 'PerplexityBot', engine: 'Perplexity', category: 'retrieval' },
+  { token: 'Perplexity-User', label: 'Perplexity-User', engine: 'Perplexity', category: 'retrieval' },
+  { token: 'Google-Extended', label: 'Google-Extended', engine: 'Gemini', category: 'retrieval' },
+  { token: 'GPTBot', label: 'GPTBot', engine: 'ChatGPT', category: 'training' },
+  { token: 'ClaudeBot', label: 'ClaudeBot', engine: 'Claude', category: 'training' },
+  { token: 'anthropic-ai', label: 'anthropic-ai', engine: 'Claude', category: 'training' },
+  { token: 'CCBot', label: 'CCBot', engine: 'Common Crawl', category: 'training' },
+  { token: 'Applebot-Extended', label: 'Applebot-Extended', engine: 'Apple Intelligence', category: 'training' },
+  { token: 'Meta-ExternalAgent', label: 'Meta-ExternalAgent', engine: 'Meta AI', category: 'training' },
+  { token: 'Bytespider', label: 'Bytespider', engine: 'ByteDance', category: 'training' },
+  { token: 'Amazonbot', label: 'Amazonbot', engine: 'Amazon', category: 'training' },
+  { token: 'Googlebot', label: 'Googlebot', engine: 'Google Search', category: 'search' },
+  { token: 'Bingbot', label: 'Bingbot', engine: 'Bing / Copilot', category: 'search' },
+  { token: '*', label: 'All crawlers (*)', engine: 'every engine', category: 'search' }
+];
+
+const CATEGORY_LABEL = { retrieval: 'live retrieval', training: 'model training', search: 'search indexing' };
+
 async function checkRobots(origin) {
   const robotsUrl = origin + '/robots.txt';
   const res = await fetchSafe(robotsUrl, USER_AGENTS.browser.ua);
@@ -142,7 +187,7 @@ async function checkRobots(origin) {
   if (isTransportFailure(res)) {
     return {
       id: 'robots-txt',
-      title: 'robots.txt',
+      title: 'robots.txt AI crawler rules',
       status: 'INCONCLUSIVE',
       detail: `Could not reach robots.txt — ${res.error}. This says nothing about the file itself; the scanner could not complete a request to this origin.`,
       howToFix: 'No action implied for the site. Re-run the scan, and if it persists, fetch this URL manually from a browser to confirm whether the file exists.',
@@ -152,39 +197,70 @@ async function checkRobots(origin) {
   if (res.status >= 400) {
     return {
       id: 'robots-txt',
-      title: 'robots.txt',
+      title: 'robots.txt AI crawler rules',
       status: 'WARNING',
-      detail: `robots.txt returned HTTP ${res.status} — no explicit rules found, so all bots are implicitly allowed.`,
+      detail: `robots.txt returned HTTP ${res.status} — no explicit rules found, so all crawlers including every AI engine are implicitly allowed.`,
       howToFix: 'Not necessarily a problem — a missing robots.txt means all bots are allowed by default. If you want explicit control (declaring a sitemap, blocking specific paths), add a robots.txt file at the site root.',
       raw: { url: robotsUrl, status: res.status }
     };
   }
+
   const robots = robotsParser(robotsUrl, res.text);
-  const bots = ['GPTBot', 'ClaudeBot', 'anthropic-ai', 'Googlebot', '*'];
-  const blocking = [];
-  for (const bot of bots) {
-    const allowedHome = robots.isAllowed(origin + '/', bot);
-    if (allowedHome === false) blocking.push(bot);
-  }
+  const evaluated = AI_CRAWLERS.map(bot => ({
+    ...bot,
+    blocked: robots.isAllowed(origin + '/', bot.token) === false
+  }));
+
+  const blocked = evaluated.filter(b => b.blocked);
+  const blockedRetrieval = blocked.filter(b => b.category === 'retrieval');
+  const blockedTraining = blocked.filter(b => b.category === 'training');
+  const blockedSearch = blocked.filter(b => b.category === 'search');
+
   const sitemaps = robots.getSitemaps ? robots.getSitemaps() : [];
+  const listed = arr => arr.map(b => b.label).join(', ');
+  const engines = arr => [...new Set(arr.map(b => b.engine))].join(', ');
+
   let status = 'PASS';
-  let detail = 'robots.txt found and does not block the homepage for any AI crawler or Googlebot.';
+  let detail = `robots.txt found. None of the ${AI_CRAWLERS.length} AI, retrieval and search crawler tokens checked are blocked from the homepage.`;
   let howToFix;
-  if (blocking.length) {
+
+  if (blockedRetrieval.length || blockedSearch.length) {
+    // Retrieval and search blocks are hard failures: they remove the site from AI answers and
+    // search results outright.
     status = 'FAIL';
-    detail = `robots.txt blocks the homepage for: ${blocking.join(', ')}. This is a Layer-1 crawlability blocker — these engines cannot see the site at all.`;
-    howToFix = 'Edit robots.txt to remove the Disallow rules blocking these user-agents, or add explicit Allow rules for them. If the site doesn\'t use a custom robots.txt, check your hosting panel or security plugin (e.g. Wordfence, a Cloudflare bot-fight rule) — server-level bot blocking often originates there, not in robots.txt itself.';
+    const parts = [];
+    if (blockedRetrieval.length) parts.push(`live retrieval blocked for ${listed(blockedRetrieval)}, so the site cannot be cited in answers from ${engines(blockedRetrieval)}`);
+    if (blockedSearch.length) parts.push(`search indexing blocked for ${listed(blockedSearch)}`);
+    if (blockedTraining.length) parts.push(`model training also blocked for ${listed(blockedTraining)}`);
+    detail = `robots.txt blocks the homepage: ${parts.join('; ')}.`;
+    const googleExtended = blockedRetrieval.some(b => b.token === 'Google-Extended')
+      ? 'Google-Extended is the token that permits Gemini and Vertex grounding — it is commonly set without intent by the "block AI crawlers" toggle in SEO plugins such as Yoast and RankMath, so check there first. '
+      : '';
+    howToFix = `Remove the Disallow rules for ${listed([...blockedRetrieval, ...blockedSearch])} in robots.txt, or add explicit Allow rules. ${googleExtended}If the site has no hand-written robots.txt, these rules are being generated by an SEO plugin, the CMS, or a CDN managed-robots feature — fix it at that source, or the file will simply be regenerated.`;
+  } else if (blockedTraining.length) {
+    // Training-only blocks are a legitimate licensing choice, so this warns and names the
+    // trade-off rather than treating it as a defect to correct.
+    status = 'WARNING';
+    detail = `robots.txt blocks model-training crawlers: ${listed(blockedTraining)}. Live retrieval and search crawling remain open, so the site can still be cited in AI answers — but it will not be represented in the underlying model knowledge of ${engines(blockedTraining)}.`;
+    howToFix = 'No action needed if this is deliberate — blocking training crawlers is a reasonable content-licensing position, and the retrieval crawlers that drive AI visibility are unaffected. If it was not deliberate, check the SEO plugin or CDN setting that generated these rules.';
   }
+
   return {
     id: 'robots-txt',
-    title: 'robots.txt rules',
+    title: 'robots.txt AI crawler rules',
     status,
     detail,
     howToFix,
-    raw: { url: robotsUrl, blockingUserAgents: blocking, sitemapsDeclared: sitemaps, bodyExcerpt: res.text.slice(0, 4000) }
+    raw: {
+      url: robotsUrl,
+      crawlersChecked: AI_CRAWLERS.length,
+      blocked: blocked.map(b => ({ token: b.token, engine: b.engine, category: CATEGORY_LABEL[b.category] })),
+      byCategory: { retrieval: blockedRetrieval.map(b => b.token), training: blockedTraining.map(b => b.token), search: blockedSearch.map(b => b.token) },
+      sitemapsDeclared: sitemaps,
+      bodyExcerpt: res.text.slice(0, 4000)
+    }
   };
 }
-
 // The browser-UA result is passed in rather than fetched again: runScan already makes exactly
 // one isolated browser-UA request to time the homepage, and that response doubles as both the
 // crawl-test baseline and the HTML source for every on-page check. The remaining user-agents
@@ -195,7 +271,17 @@ async function checkRobots(origin) {
 // that combination is a deliberate server decision. A timeout or a dropped connection is not
 // evidence of bot-blocking; it is evidence of an unreliable connection, and treating the two as
 // equivalent is what previously let one stray timeout gate an entire scan.
-const EXPLICIT_BLOCK_STATUSES = new Set([401, 403, 405, 429, 451]);
+// Statuses that represent a deliberate, persistent policy decision to refuse a crawler. 402 is
+// included because Cloudflare pay-per-crawl answers AI crawlers it wants payment from with
+// Payment Required, which to a crawler is a refusal like any other.
+//
+// 429 is deliberately NOT here. It means "you are asking too often", not "you are not
+// permitted" — a transient condition a scan can trigger itself. Observed live: after repeated
+// scans of one client site the host answered every named-crawler UA with 429 "Rate limit
+// exceeded" and Retry-After: 3600 while the browser UA still returned 200. The old logic called
+// that a deliberate decision to reject AI crawlers. It was our own traffic.
+const EXPLICIT_BLOCK_STATUSES = new Set([401, 402, 403, 405, 451]);
+const RATE_LIMIT_STATUSES = new Set([429, 503]);
 
 async function checkMultiUA(pageUrl, browserFetch) {
   const others = Object.entries(USER_AGENTS).filter(([key]) => key !== 'browser');
@@ -206,6 +292,8 @@ async function checkMultiUA(pageUrl, browserFetch) {
     key, label: cfg.label, ua: cfg.ua, status: r.status, ok: r.ok, ms: r.ms,
     bodyLength: r.text.length, error: r.error, errorKind: r.errorKind,
     explicitlyBlocked: EXPLICIT_BLOCK_STATUSES.has(r.status),
+    rateLimited: RATE_LIMIT_STATUSES.has(r.status),
+    retryAfter: r.headers ? r.headers.get('retry-after') : null,
     serverError: r.status >= 500,
     transportFailed: isTransportFailure(r)
   }));
@@ -232,18 +320,26 @@ async function checkMultiUA(pageUrl, browserFetch) {
   }
 
   const explicitBlocks = bots.filter(b => b.explicitlyBlocked);
-  const serverErrors = bots.filter(b => b.serverError);
+  const rateLimited = bots.filter(b => b.rateLimited);
+  const serverErrors = bots.filter(b => b.serverError && !b.rateLimited);
   const flaky = bots.filter(b => b.transportFailed);
   const suspiciousSizeDiff = bots.filter(b => b.ok && baseline.bodyLength > 0 && Math.abs(b.bodyLength - baseline.bodyLength) / baseline.bodyLength > 0.6);
 
   let status = 'PASS';
-  let detail = 'All tested user-agents (browser, GPTBot, ClaudeBot, Googlebot, plain default) received the same, successful response.';
+  let detail = `All ${results.length} tested user-agents (browser, GPTBot, ClaudeBot, Googlebot, OAI-SearchBot, PerplexityBot, plain default) received the same, successful response.`;
   let howToFix;
 
   if (explicitBlocks.length) {
     status = 'FAIL';
     detail = `The server explicitly refused: ${explicitBlocks.map(b => `${b.label} (HTTP ${b.status})`).join(', ')}, while the browser UA succeeded (HTTP ${baseline.status}). An explicit refusal status alongside a working browser request is a deliberate server-side decision to reject these crawlers.`;
     howToFix = 'Check your hosting firewall/WAF and any "block bad bots" or bot-fight-mode settings in your hosting control panel or CDN (Cloudflare, Sucuri, etc) — these often block AI crawler user-agents by default under generic bot-protection rules. Add GPTBot, ClaudeBot, and Googlebot to an allowlist.';
+  } else if (rateLimited.length) {
+    // Rate limiting is reported honestly as inconclusive-leaning: it is transient, it may have
+    // been caused by this scan, and it is never evidence of an AI-crawler policy.
+    status = 'WARNING';
+    const ra = rateLimited.map(b => b.retryAfter).find(Boolean);
+    detail = `Rate limited (HTTP ${rateLimited[0].status}) for: ${rateLimited.map(b => b.label).join(', ')}, while the browser UA succeeded (HTTP ${baseline.status})${ra ? `. The server asked for a ${Math.round(Number(ra) / 60) || 1}-minute wait (Retry-After: ${ra})` : ''}. This is a request-rate limit, not a decision to reject AI crawlers — and it can be triggered by scanning itself, so it is not treated as a bot-blocking finding.`;
+    howToFix = 'Re-run the scan after the retry window has passed. If named crawler user-agents are still rate limited while a browser is not, the host has a crawler-specific rate limit worth raising — ask them to raise or remove it for GPTBot, ClaudeBot, OAI-SearchBot and PerplexityBot, since aggressive rate limiting slows or prevents AI indexing.';
   } else if (serverErrors.length) {
     status = 'WARNING';
     detail = `Server errors for: ${serverErrors.map(b => `${b.label} (HTTP ${b.status})`).join(', ')} while the browser UA succeeded. A 5xx is more likely a server fault than a deliberate block, but it keeps these crawlers out just as effectively.`;
@@ -300,36 +396,100 @@ function checkNoindexMeta($) {
   };
 }
 
-async function checkSitemap(origin) {
-  const sitemapUrl = origin + '/sitemap.xml';
-  const res = await fetchSafe(sitemapUrl, USER_AGENTS.browser.ua);
-  if (isTransportFailure(res)) {
-    return { id: 'sitemap', title: 'sitemap.xml', status: 'INCONCLUSIVE', detail: `Could not reach sitemap.xml — ${res.error}. Whether a sitemap exists is unknown; the scanner could not complete a request to this origin.`, howToFix: 'No action implied for the site. Re-run the scan, or open this URL manually to confirm.', raw: { url: sitemapUrl, errorKind: res.errorKind, errorCode: res.errorCode } };
-  }
-  if (res.status >= 400) {
-    return { id: 'sitemap', title: 'sitemap.xml', status: 'WARNING', detail: `sitemap.xml not found (HTTP ${res.status}). Not fatal, but a missing sitemap makes discovery slower for every crawler.`, howToFix: 'Generate a sitemap.xml (most CMS/SEO plugins like Yoast, RankMath, or a static site generator can do this automatically) and reference it in robots.txt.', raw: { url: sitemapUrl, status: res.status } };
-  }
-  const looksXml = /^\s*<\?xml/i.test(res.text) || /<urlset/i.test(res.text) || /<sitemapindex/i.test(res.text);
-  if (!looksXml) {
-    return { id: 'sitemap', title: 'sitemap.xml', status: 'FAIL', detail: 'A file exists at /sitemap.xml but it is not valid XML (no <urlset> or <sitemapindex> root). Likely a misconfigured route or a 404 page served with a 200 status.', howToFix: 'Confirm sitemap.xml returns valid XML with a proper <urlset> or <sitemapindex> root and at least one <loc> entry — check your sitemap generator/plugin configuration or routing rules.', raw: { url: sitemapUrl } };
-  }
-  const urlCount = (res.text.match(/<loc>/gi) || []).length;
-  const isIndex = /<sitemapindex/i.test(res.text);
-  let status = 'PASS';
-  let detail = `Valid ${isIndex ? 'sitemap index' : 'sitemap'} with ${urlCount} URL${urlCount === 1 ? '' : 's'} listed.`;
-  let howToFix;
-  if (urlCount === 0) {
-    status = 'FAIL';
-    detail = 'sitemap.xml is valid XML but contains zero <loc> entries — effectively empty.';
-    howToFix = 'Check why your sitemap generator/plugin is producing an empty file — often a misconfiguration (wrong post type/content filter) rather than a genuine absence of pages.';
-  } else if (urlCount < 3 && !isIndex) {
-    status = 'WARNING';
-    detail = `Sitemap only lists ${urlCount} URL${urlCount === 1 ? '' : 's'} — unusually small; confirm it is being generated/updated correctly.`;
-    howToFix = 'Confirm the sitemap generator is including all published pages, not just a subset (a common bug after a CMS or plugin migration).';
-  }
-  return { id: 'sitemap', title: 'sitemap.xml', status, detail, howToFix, raw: { url: sitemapUrl, urlCount, isIndex } };
+// Candidate sitemap locations, tried in order after anything robots.txt actually declares.
+// The old check only ever looked at /sitemap.xml, so a site with a perfectly good sitemap at
+// /sitemap_index.xml (the Yoast default) or /wp-sitemap.xml (WordPress core since 5.5) was
+// reported as having none — a false finding handed straight to the client.
+const SITEMAP_CANDIDATES = ['/sitemap.xml', '/sitemap_index.xml', '/wp-sitemap.xml', '/sitemap-index.xml', '/sitemap1.xml'];
+
+function parseSitemapBody(url, text) {
+  const looksXml = /^\s*<\?xml/i.test(text) || /<urlset/i.test(text) || /<sitemapindex/i.test(text);
+  if (!looksXml) return { valid: false, url };
+  return {
+    valid: true,
+    url,
+    urlCount: (text.match(/<loc>/gi) || []).length,
+    isIndex: /<sitemapindex/i.test(text)
+  };
 }
 
+async function checkSitemap(origin, declaredSitemaps = []) {
+  // Anything robots.txt declares is authoritative and gets tried first — a site that publishes
+  // its sitemap at a non-standard path and says so is correctly configured, and guessing paths
+  // before reading the declaration would report it as broken.
+  const declared = declaredSitemaps.filter(u => typeof u === 'string' && /^https?:\/\//i.test(u));
+  const candidates = [...declared, ...SITEMAP_CANDIDATES.map(p => origin + p)];
+  const seen = new Set();
+  const attempts = [];
+  let transportFailures = 0;
+
+  for (const url of candidates) {
+    const key = url.replace(/\/+$/, '').toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    const res = await fetchSafe(url, USER_AGENTS.browser.ua);
+    if (isTransportFailure(res)) { transportFailures++; attempts.push({ url, error: res.error }); continue; }
+    if (res.status >= 400) { attempts.push({ url, status: res.status }); continue; }
+
+    const parsed = parseSitemapBody(url, res.text);
+    if (!parsed.valid) { attempts.push({ url, status: res.status, note: 'not valid XML' }); continue; }
+
+    const wasDeclared = declared.some(d => d.replace(/\/+$/, '').toLowerCase() === key);
+    let status = 'PASS';
+    let detail = `Valid ${parsed.isIndex ? 'sitemap index' : 'sitemap'} at ${url} with ${parsed.urlCount} URL${parsed.urlCount === 1 ? '' : 's'} listed${wasDeclared ? ', declared in robots.txt' : ''}.`;
+    let howToFix;
+    if (parsed.urlCount === 0) {
+      status = 'FAIL';
+      detail = `The sitemap at ${url} is valid XML but contains zero <loc> entries — effectively empty.`;
+      howToFix = 'Check why your sitemap generator/plugin is producing an empty file — often a misconfiguration (wrong post type/content filter) rather than a genuine absence of pages.';
+    } else if (parsed.urlCount < 3 && !parsed.isIndex) {
+      status = 'WARNING';
+      detail = `The sitemap at ${url} lists only ${parsed.urlCount} URL${parsed.urlCount === 1 ? '' : 's'} — unusually small; confirm it is being generated and updated correctly.`;
+      howToFix = 'Confirm the sitemap generator is including all published pages, not just a subset (a common bug after a CMS or plugin migration).';
+    } else if (!wasDeclared) {
+      howToFix = `The sitemap works but is not declared in robots.txt. Add "Sitemap: ${url}" to robots.txt so crawlers find it without guessing.`;
+    }
+    return { id: 'sitemap', title: 'XML sitemap', status, detail, howToFix, raw: { url, urlCount: parsed.urlCount, isIndex: parsed.isIndex, declaredInRobots: wasDeclared, attempts } };
+  }
+
+  // Nothing valid found. If every attempt died at the transport layer we learned nothing at all,
+  // so that is unverified rather than a missing-sitemap finding.
+  if (transportFailures === attempts.length && attempts.length > 0) {
+    return { id: 'sitemap', title: 'XML sitemap', status: 'INCONCLUSIVE', detail: 'Could not reach any sitemap location — every request to this origin failed at the connection level. Whether a sitemap exists is unknown.', howToFix: 'No action implied for the site. Re-run the scan, or open the sitemap URL manually to confirm.', raw: { attempts } };
+  }
+
+  return {
+    id: 'sitemap',
+    title: 'XML sitemap',
+    status: 'WARNING',
+    detail: `No XML sitemap found. Checked ${attempts.length} location${attempts.length === 1 ? '' : 's'}${declared.length ? ' including the one declared in robots.txt' : ''}: ${attempts.map(a => a.url.replace(origin, '')).join(', ')}. Not fatal, but a missing sitemap makes discovery slower for every crawler.`,
+    howToFix: 'Generate a sitemap.xml (Yoast, RankMath, WordPress core, or any static site generator can do this automatically) and declare it in robots.txt with a "Sitemap:" line.',
+    raw: { attempts, declaredInRobots: declared }
+  };
+}
+
+// ── llms.txt ──
+// An emerging convention (llmstxt.org): a markdown file at the site root that gives AI systems a
+// curated map of the site's most useful content. Adoption is still early and no major engine has
+// committed to honouring it, so its absence is never scored as a defect — this reports presence
+// only, as an informational signal and a cheap differentiator to raise with a client.
+async function checkLlmsTxt(origin) {
+  const url = origin + '/llms.txt';
+  const res = await fetchSafe(url, USER_AGENTS.browser.ua);
+  if (isTransportFailure(res)) return null; // silent: never invent a row from a network failure
+  const found = res.status < 400 && /^\s*#/m.test(res.text) && res.text.length > 20;
+  return {
+    id: 'llms-txt',
+    title: 'llms.txt (emerging standard)',
+    status: found ? 'PASS' : 'INCONCLUSIVE',
+    detail: found
+      ? `An llms.txt file is published at ${url} (${res.text.length} bytes), giving AI systems a curated guide to the site's key content.`
+      : 'No llms.txt file found. This is an emerging convention rather than an established requirement, and no major AI engine has committed to honouring it yet — so this is not counted against the site and carries no score.',
+    howToFix: found ? undefined : 'Optional, and worth doing mainly as an early-mover signal: publish /llms.txt as a markdown index of your most valuable pages with a one-line description of each. Low effort, no downside, and it demonstrates deliberate AI-readiness to a client.',
+    raw: { url, status: res.status, found }
+  };
+}
 // Deliberately measured by its own isolated fetch (see runScan below), not reused from the
 // multi-user-agent test or bundled into the same parallel wave as robots.txt/sitemap/extra pages.
 // Running all of those concurrently against the same origin creates a burst of simultaneous
@@ -431,8 +591,8 @@ function buildUnreachableCheck(kinds, sampleError) {
 // Spoofing GPTBot's UA from any other network sails straight through. Rather than let that gap
 // sit silently behind a PASS, name it and hand over a concrete manual check.
 const EDGE_PROVIDERS = [
-  { id: 'cloudflare', label: 'Cloudflare', test: h => /cloudflare/i.test(h.server || '') || !!h['cf-ray'], where: 'Cloudflare dashboard → Security → Bots' },
-  { id: 'sucuri', label: 'Sucuri', test: h => /sucuri/i.test(h.server || '') || !!h['x-sucuri-id'], where: 'Sucuri dashboard → Firewall → Access Control' },
+  { id: 'cloudflare', label: 'Cloudflare', test: h => /cloudflare/i.test(h.server || '') || !!h['cf-ray'], where: 'Cloudflare → Security → Bots (check "Block AI Scrapers and Crawlers", Bot Fight Mode, and any AI Audit / pay-per-crawl setting)' },
+  { id: 'sucuri', label: 'Sucuri', test: h => /sucuri/i.test(h.server || '') || !!h['x-sucuri-id'], where: 'Sucuri → Firewall → Access Control → Whitelist/Blacklist, and the "Block Bad Bots" setting' },
   { id: 'akamai', label: 'Akamai', test: h => /akamai/i.test(h.server || '') || !!h['x-akamai-transformed'], where: 'Akamai Bot Manager configuration' },
   { id: 'fastly', label: 'Fastly', test: h => /fastly/i.test(h.server || '') || !!h['x-served-by'] && /fastly/i.test(h['x-served-by'] || ''), where: 'Fastly service configuration' },
   { id: 'imperva', label: 'Imperva / Incapsula', test: h => !!h['x-iinfo'] || /incap/i.test(h['x-cdn'] || ''), where: 'Imperva Bot Protection settings' }
@@ -462,7 +622,7 @@ function checkEdgeProtection(headers) {
     title: 'Edge bot protection (CDN/WAF)',
     status: 'INCONCLUSIVE',
     detail: `This site is served through ${names}${botManaged ? ', with bot management actively running (a __cf_bm token was issued on this request)' : ''}. Edge services identify AI crawlers by source IP range, not by user-agent string, so the user-agent test above cannot confirm whether GPTBot or ClaudeBot are actually allowed through — a UA test passes regardless. This requires manual verification and is reported as unverified rather than as a pass.`,
-    howToFix: `Verify AI crawler access directly in ${found.map(p => p.where).join(' / ')}. Look specifically for an AI-scrapers or bot-fight setting: these can block AI crawlers at the edge independently of robots.txt, and on some providers newer domains have it enabled by default without the owner choosing it. Note that training crawlers (GPTBot, ClaudeBot) and retrieval bots (OAI-SearchBot, ChatGPT-User, PerplexityBot) are often governed by separate toggles — for AI visibility the retrieval bots matter most.`,
+    howToFix: `Verify AI crawler access directly in ${found.map(p => p.where).join(' / ')}. These settings block AI crawlers at the network edge independently of robots.txt, and on some providers newer domains have them enabled by default without the owner ever choosing it — so an unchanged, untouched site can still be invisible. Check the retrieval crawlers first (OAI-SearchBot, ChatGPT-User, Claude-User, PerplexityBot): they are usually governed by a separate toggle from the training crawlers, and they are the ones that determine whether the site can be cited in an answer. The robots.txt result in this report is unaffected by any of this and remains reliable — it is only the edge layer that cannot be confirmed remotely.`,
     raw: { providers: found.map(p => p.id), botManagementCookie: botManaged, server: h.server || null }
   };
 }
@@ -1141,10 +1301,19 @@ export async function runScan({ url, extraPages }) {
   // Phase 2 — the remaining four user-agents (paced internally by checkMultiUA).
   const multiUA = await checkMultiUA(homepageUrl, homepageFetch);
 
-  // Phase 3 — robots.txt and sitemap.xml.
-  const [robotsResult, sitemapResult] = await mapLimited([() => checkRobots(origin), () => checkSitemap(origin)], fn => fn());
+  // Phase 3 — robots.txt first, on its own, because its Sitemap: declarations tell the sitemap
+  // check where to look. Guessing paths before reading the declaration is exactly how a site with
+  // a perfectly good sitemap at a non-default location gets reported as having none.
+  const robotsResult = await checkRobots(origin);
+  const declaredSitemaps = (robotsResult.raw && robotsResult.raw.sitemapsDeclared) || [];
 
-  // Phase 4 — any manually supplied extra pages.
+  // Phase 4 — sitemap (using those declarations) and llms.txt.
+  const [sitemapResult, llmsResult] = await mapLimited(
+    [() => checkSitemap(origin, declaredSitemaps), () => checkLlmsTxt(origin)],
+    fn => fn()
+  );
+
+  // Phase 5 — any manually supplied extra pages.
   const extraPageFetches = await mapLimited(cleanExtraPages, async u => ({ url: u, ...(await fetchSafe(u, USER_AGENTS.browser.ua)) }));
 
   const section1Checks = [];
@@ -1162,6 +1331,7 @@ export async function runScan({ url, extraPages }) {
       checkResponseTime(timingFetch, timingSamples)
     );
     if (edgeCheck) section1Checks.push(edgeCheck);
+    if (llmsResult) section1Checks.push(llmsResult);
   } else {
     // The homepage never responded. This is reported as a scanner-reachability result, not as a
     // verdict about the site: a refused connection is most often edge bot protection rejecting
