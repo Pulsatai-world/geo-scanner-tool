@@ -678,6 +678,20 @@ function checkPlatform(platform) {
   };
 }
 
+// One hostname resolves and the other does not. Reported as a FAIL because it is a genuine
+// availability and consolidation defect: visitors who type the bare domain get nothing, inbound
+// links to that form are dead, and search and AI engines see two hostnames rather than one site.
+function buildHostVariantCheck(fb) {
+  return {
+    id: 'host-variant',
+    title: 'www / non-www resolution',
+    status: 'FAIL',
+    detail: `${fb.requested} does not resolve (${fb.requestedError}), while ${fb.resolved} serves the site normally. The scan continued against ${fb.resolved}. Anyone typing or linking the ${fb.requested} form reaches nothing at all.`,
+    howToFix: `Add a DNS record for ${fb.requested} and redirect it permanently (301) to ${fb.resolved}. Both forms of a domain should always resolve, with one redirecting to the other — otherwise inbound links and typed addresses using the missing form fail silently, and the two hostnames are not consolidated into a single site for search and AI engines.`,
+    raw: fb
+  };
+}
+
 // ── Edge protection / CDN fingerprint ──
 // Our user-agent test cannot settle whether AI crawlers are blocked at a CDN edge, because
 // Cloudflare and similar services identify verified bots by source IP range, not by UA string.
@@ -1361,8 +1375,42 @@ function buildPrioritizedFindings(section1Checks, pageDiscovery, section2Pages, 
 // cycle — this scan can legitimately take longer than a regular function's execution ceiling on
 // a slow site, and a slow site is exactly the case this tool needs to diagnose, not crash on.
 
+// Toggles the www prefix on a URL's hostname, leaving everything else intact.
+function toggleWwwHost(href) {
+  const u = new URL(href);
+  u.hostname = u.hostname.startsWith('www.') ? u.hostname.slice(4) : 'www.' + u.hostname;
+  return u;
+}
+
 export async function runScan({ url, extraPages }) {
-  const parsed = normalizeUrl(url);
+  let parsed = normalizeUrl(url);
+
+  // ── Host resolution ──
+  // A domain that answers on www but not on the bare apex (or the reverse) is extremely common,
+  // and left unhandled it presents as a total scan failure for a site that is perfectly healthy —
+  // whichever form the operator happened to type decides whether the scan works at all.
+  //
+  // Worse, failing there buries a genuine finding. If the apex does not resolve, every person who
+  // types the bare domain reaches nothing, every link written to that form is dead, and the two
+  // hostnames are not consolidated for search or AI engines. So: try the other form, scan
+  // whichever one answers, and report the one that did not as a finding in its own right.
+  let timingFetch = await fetchSafe(parsed.href, USER_AGENTS.browser.ua);
+  let hostFallback = null;
+  if (!timingFetch.ok && (timingFetch.errorKind === 'dns' || timingFetch.errorKind === 'refused')) {
+    const alt = toggleWwwHost(parsed.href);
+    const altFetch = await fetchSafe(alt.href, USER_AGENTS.browser.ua);
+    if (altFetch.ok) {
+      hostFallback = {
+        requested: parsed.hostname,
+        resolved: alt.hostname,
+        requestedError: timingFetch.error,
+        requestedErrorKind: timingFetch.errorKind
+      };
+      parsed = alt;
+      timingFetch = altFetch;
+    }
+  }
+
   const origin = parsed.origin;
   const homepageUrl = parsed.href;
 
@@ -1381,7 +1429,6 @@ export async function runScan({ url, extraPages }) {
   // Phase 1 — one isolated request. Times the homepage with nothing else contending, and its
   // response doubles as the crawl-test baseline and the HTML source for every on-page check, so
   // the homepage is fetched exactly once.
-  const timingFetch = await fetchSafe(homepageUrl, USER_AGENTS.browser.ua);
   const homepageFetch = timingFetch;
 
   // A second isolated timing sample, taken only when the first succeeded. checkResponseTime uses
@@ -1427,6 +1474,7 @@ export async function runScan({ url, extraPages }) {
       sitemapResult,
       checkResponseTime(timingFetch, timingSamples)
     );
+    if (hostFallback) section1Checks.push(buildHostVariantCheck(hostFallback));
     if (platformCheck) section1Checks.push(platformCheck);
     if (edgeCheck) section1Checks.push(edgeCheck);
     if (llmsResult) section1Checks.push(llmsResult);
@@ -1435,6 +1483,7 @@ export async function runScan({ url, extraPages }) {
     // verdict about the site: a refused connection is most often edge bot protection rejecting
     // our cloud egress IP, and the site is typically serving real visitors normally throughout.
     // Checks that genuinely cannot be evaluated without HTML are omitted rather than guessed.
+    if (hostFallback) section1Checks.push(buildHostVariantCheck(hostFallback));
     section1Checks.push(
       buildUnreachableCheck(multiUA.errorKinds || [homepageFetch.errorKind], multiUA.sampleError || homepageFetch.error),
       multiUA.check,
