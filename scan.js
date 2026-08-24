@@ -86,7 +86,7 @@ const STATUS_MARK = { PASS: 'ok  ', WARNING: 'warn', FAIL: 'FAIL', INCONCLUSIVE:
   } else {
     const s = result.score;
     console.log(`ON-PAGE GEO READINESS: ${s.overall}/100`);
-    console.log(`  on-page ${s.sections.onPage ?? '—'}   agentic ${s.sections.agenticBrowsing ?? '—'}   content ${s.sections.contentSpecificity ?? '—'}   crawlability ${s.sections.crawlability ?? '—'} (not in score)`);
+    (result.layers || []).forEach(l => console.log(`  ${l.title.padEnd(34)} ${l.score === null ? ' —' : String(l.score).padStart(3)}${l.scored ? '' : '   (not in score)'}`));
     console.log(`  ${result.scanQuality.pagesAnalyzed} page(s) analysed · ${s.blockers.count} blocker(s) · ${s.unverified.count} unverified · ${elapsed}s\n`);
 
     console.log('CRAWLABILITY');

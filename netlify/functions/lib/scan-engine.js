@@ -1638,19 +1638,26 @@ function computeScoreLegacy(section1Checks, section2Pages, section4Pages, sectio
 // must not be handed to a client as work to do — they are things the scan could not establish,
 // each carrying a manual check instead. Mixing them in with confirmed problems is how a scanner
 // limitation ends up on someone's remediation backlog.
+// Findings carry the layer they belong to, read from the registry, so a check is described the
+// same way wherever it appears in the report.
+function layerTitle(checkId) {
+  const entry = CHECKS[checkId];
+  return entry && LAYERS[entry.layer] ? LAYERS[entry.layer].title : 'Other';
+}
+
 function buildPrioritizedFindings(section1Checks, pageDiscovery, section2Pages, section4Pages, section3) {
   const findings = [];
   const actionable = c => c.status === 'FAIL' || c.status === 'WARNING';
 
-  section1Checks.filter(actionable).forEach(c => findings.push({ priority: 'blocker', section: 'Crawlability', title: c.title, detail: c.detail, howToFix: c.howToFix, status: c.status }));
-  section2Pages.forEach(p => p.checks.filter(actionable).forEach(c => findings.push({ priority: 'on-page', section: 'On-Page GEO Signals', page: p.url, title: c.title, detail: c.detail, howToFix: c.howToFix, status: c.status })));
-  section4Pages.forEach(p => p.checks.filter(actionable).forEach(c => findings.push({ priority: 'agentic', section: 'Agentic Browsing / AI Agent Accessibility', page: p.url, title: c.title, detail: c.detail, howToFix: c.howToFix, status: c.status })));
-  section3.perPage.forEach(p => p.checks.filter(actionable).forEach(c => findings.push({ priority: 'content', section: 'Content Specificity', page: p.url, title: c.title, detail: c.detail, howToFix: c.howToFix, status: c.status })));
-  if (actionable(section3.boilerplateCheck)) findings.push({ priority: 'content', section: 'Content Specificity', title: section3.boilerplateCheck.title, detail: section3.boilerplateCheck.detail, howToFix: section3.boilerplateCheck.howToFix, status: section3.boilerplateCheck.status });
+  section1Checks.filter(actionable).forEach(c => findings.push({ priority: 'blocker', section: layerTitle(c.id), title: c.title, detail: c.detail, howToFix: c.howToFix, status: c.status }));
+  section2Pages.forEach(p => p.checks.filter(actionable).forEach(c => findings.push({ priority: 'on-page', section: layerTitle(c.id), page: p.url, title: c.title, detail: c.detail, howToFix: c.howToFix, status: c.status })));
+  section4Pages.forEach(p => p.checks.filter(actionable).forEach(c => findings.push({ priority: 'agentic', section: layerTitle(c.id), page: p.url, title: c.title, detail: c.detail, howToFix: c.howToFix, status: c.status })));
+  section3.perPage.forEach(p => p.checks.filter(actionable).forEach(c => findings.push({ priority: 'content', section: layerTitle(c.id), page: p.url, title: c.title, detail: c.detail, howToFix: c.howToFix, status: c.status })));
+  if (actionable(section3.boilerplateCheck)) findings.push({ priority: 'content', section: layerTitle(section3.boilerplateCheck.id), title: section3.boilerplateCheck.title, detail: section3.boilerplateCheck.detail, howToFix: section3.boilerplateCheck.howToFix, status: section3.boilerplateCheck.status });
   pageDiscovery.categories.filter(actionable).forEach(c => findings.push({ priority: 'discovery', section: 'Key Page Discovery', title: c.title, detail: c.detail, howToFix: c.howToFix, status: c.status }));
 
   const unverified = [
-    ...section1Checks.filter(c => c.status === 'INCONCLUSIVE').map(c => ({ priority: 'unverified', section: 'Needs manual verification', title: c.title, detail: c.detail, howToFix: c.howToFix, status: c.status })),
+    ...section1Checks.filter(c => c.status === 'INCONCLUSIVE').map(c => ({ priority: 'unverified', section: layerTitle(c.id), title: c.title, detail: c.detail, howToFix: c.howToFix, status: c.status })),
     ...pageDiscovery.categories.filter(c => c.status === 'INCONCLUSIVE').map(c => ({ priority: 'unverified', section: 'Needs manual verification', title: c.title, detail: c.detail, howToFix: c.howToFix, status: c.status }))
   ];
 
