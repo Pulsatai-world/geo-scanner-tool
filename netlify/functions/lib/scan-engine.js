@@ -1085,6 +1085,199 @@ function checkJsRendering($, mainText, html) {
   };
 }
 
+// ── Content depth, page scope, and authority ──
+//
+// These four checks exist to answer the questions an analyst would otherwise work through by
+// hand after reading the scan: is there enough substance here to be cited, does this page cover
+// too much to rank for any of it, is there anything demonstrating the business is real and
+// credible, and is the content shaped so an engine can lift an answer out of it.
+//
+// The older word-count check asked only "is this page empty", passing anything over 150 words.
+// That is the wrong question for GEO: a 286-word page clears it comfortably while having far too
+// little for any engine to draw on. These are calibrated against what retrieval actually needs.
+//
+// All patterns are bilingual. The sites this runs against are largely Spanish-language, and an
+// English-only heuristic would report a well-credentialed Spanish site as having no authority
+// signals at all — a false finding, and an embarrassing one to hand a client.
+
+const DEPTH_THIN = 300;
+const DEPTH_LIGHT = 600;
+const DEPTH_ADEQUATE = 1200;
+
+function checkContentDepth(wordCount) {
+  if (wordCount < DEPTH_THIN) {
+    return {
+      id: 'content-depth',
+      title: 'Content depth for citation',
+      status: 'FAIL',
+      detail: `${wordCount} words of main content. Below roughly ${DEPTH_THIN} words there is not enough substance for a generative engine to extract and cite a useful passage — the page can be crawled perfectly and still never be quoted, because there is nothing in it worth quoting.`,
+      howToFix: `Expand to at least ${DEPTH_LIGHT}-${DEPTH_ADEQUATE} words of genuinely substantive content: what the service actually involves, who it is for, how it works, what it costs, what the outcome looks like. Length alone is worthless — the target is specific, concrete material an engine can lift an answer from.`,
+      raw: { wordCount, band: 'thin' }
+    };
+  }
+  if (wordCount < DEPTH_LIGHT) {
+    return {
+      id: 'content-depth',
+      title: 'Content depth for citation',
+      status: 'WARNING',
+      detail: `${wordCount} words of main content — enough to be indexed, but light. Pages in this range are rarely the source an engine chooses when a more thorough page exists on the same topic elsewhere.`,
+      howToFix: `Build toward ${DEPTH_ADEQUATE}+ words by answering the questions a buyer actually asks: process, timelines, pricing, prerequisites, comparisons with alternatives.`,
+      raw: { wordCount, band: 'light' }
+    };
+  }
+  return {
+    id: 'content-depth',
+    title: 'Content depth for citation',
+    status: 'PASS',
+    detail: `${wordCount} words of main content — ${wordCount >= DEPTH_ADEQUATE ? 'substantial' : 'adequate'} depth for an engine to extract a citable passage.`,
+    raw: { wordCount, band: wordCount >= DEPTH_ADEQUATE ? 'substantial' : 'adequate' }
+  };
+}
+
+// Splits the page at its H2 boundaries and measures the content under each, which is what makes
+// "should this be several pages" answerable rather than a matter of taste.
+function measureSections($) {
+  const sections = [];
+  $('h2').each((_, el) => {
+    const heading = $(el).text().trim().replace(/\s+/g, ' ').slice(0, 90);
+    let words = 0;
+    let node = $(el).next();
+    while (node.length && !/^h[12]$/i.test(node.get(0).tagName || '')) {
+      words += node.text().replace(/\s+/g, ' ').trim().split(/\s+/).filter(Boolean).length;
+      node = node.next();
+    }
+    if (heading) sections.push({ heading, words });
+  });
+  return sections;
+}
+
+function checkPageScope($, wordCount) {
+  const sections = measureSections($);
+  const navLinks = $('nav a[href], header a[href]').toArray().map(a => $(a).attr('href') || '');
+  const realNavLinks = navLinks.filter(h => h && !/^#/.test(h) && !/^(mailto:|tel:|javascript:)/i.test(h));
+  const anchorNavLinks = navLinks.filter(h => /^#./.test(h));
+  // Navigation built entirely from in-page anchors is the defining signature of a one-page site:
+  // the "pages" a visitor is offered are scroll positions, so there is only ever one document for
+  // an engine to retrieve no matter how many topics it covers.
+  const anchorOnlyNav = anchorNavLinks.length >= 3 && realNavLinks.length === 0;
+  const avgSectionWords = sections.length ? Math.round(sections.reduce((n, s) => n + s.words, 0) / sections.length) : 0;
+
+  const raw = { sectionCount: sections.length, avgSectionWords, anchorOnlyNav, anchorNavLinks: anchorNavLinks.length, realNavLinks: realNavLinks.length, sections: sections.slice(0, 12) };
+
+  if (anchorOnlyNav && sections.length >= 3) {
+    return {
+      id: 'page-scope',
+      title: 'Page scope — should this be split?',
+      status: 'FAIL',
+      detail: `This is a single-page site covering ${sections.length} distinct topics (${sections.map(s => s.heading).slice(0, 5).join('; ')}${sections.length > 5 ? '; …' : ''}), averaging ${avgSectionWords} words each. Every navigation link is an in-page anchor, so there is only one document in existence. Generative engines retrieve and cite at page level, which means no topic here can be returned for a query about it — they are all competing inside one thin page.`,
+      howToFix: `Split into separate pages, one per topic, each with its own URL and its own place in the navigation: ${sections.map(s => s.heading).slice(0, 5).join(', ')}. Then give each ${DEPTH_LIGHT}+ words of specific content. This is the highest-impact structural change available to this site, and every other content recommendation depends on it.`,
+      raw
+    };
+  }
+  if (sections.length >= 4 && avgSectionWords > 0 && avgSectionWords < 120) {
+    return {
+      id: 'page-scope',
+      title: 'Page scope — should this be split?',
+      status: 'WARNING',
+      detail: `The page covers ${sections.length} topics at an average of ${avgSectionWords} words each. Each section is too thin to be retrieved on its own, and together they dilute what the page is about.`,
+      howToFix: 'Promote the sections that deserve to rank into their own pages with substantive content, and keep only a summary with a link on this page. A page that is about one thing is retrievable; a page about six things is about nothing.',
+      raw
+    };
+  }
+  return {
+    id: 'page-scope',
+    title: 'Page scope — should this be split?',
+    status: 'PASS',
+    detail: sections.length
+      ? `${sections.length} content section(s) averaging ${avgSectionWords} words. The page has a coherent scope and does not need splitting.`
+      : 'No multi-topic structure detected that would warrant splitting this page.',
+    raw
+  };
+}
+
+// Authority is the half of GEO that on-page technical checks miss entirely. Engines favour
+// sources that demonstrably belong to a real, identifiable organisation, and none of that is
+// visible to a title-tag or schema check.
+const AUTHORITY_PATTERNS = {
+  namedPeople: /\b(?:founder|fundador[ao]?|ceo|director[ao]?|gerente|president[e|a]|our team|nuestro equipo|equipo directivo|written by|escrito por|autor)\b/i,
+  clientEvidence: /\b(?:case stud(?:y|ies)|caso[s]? de [ée]xito|testimonial(?:s|es)?|testimonio[s]?|our clients|nuestros clientes|trusted by|clientes destacados|portfolio|portafolio)\b/i,
+  credentials: /\b(?:certifi(?:ed|cation|cado|caci[óo]n)|accredit(?:ed|ation)|acreditad[ao]|award|premio|galard[óo]n|ISO\s?\d{4,5}|member of|miembro de|asociaci[óo]n|since\s+(?:19|20)\d{2}|desde\s+(?:19|20)\d{2}|\d{1,2}\+?\s*(?:years|a[ñn]os)\s+(?:of\s+)?(?:experience|experiencia|in business))\b/i,
+  physicalPresence: /\b(?:\d{1,5}\s+[A-Z][a-z]+\s+(?:street|st\.|avenue|ave\.|road|rd\.|calle|avenida|av\.|blvd)|C\.?P\.?\s?\d{5}|co?l\.\s+[A-Z])/i
+};
+
+function checkAuthoritySignals($, mainText) {
+  const present = {};
+  const missing = [];
+
+  present.namedPeople = AUTHORITY_PATTERNS.namedPeople.test(mainText) || $('[rel~="author"]').length > 0;
+  present.clientEvidence = AUTHORITY_PATTERNS.clientEvidence.test(mainText);
+  present.credentials = AUTHORITY_PATTERNS.credentials.test(mainText);
+  present.physicalAddress = AUTHORITY_PATTERNS.physicalPresence.test(mainText) || $('[itemprop="address"], address').length > 0;
+  present.directContact = $('a[href^="tel:"]').length > 0 || $('a[href^="mailto:"]').length > 0;
+
+  // sameAs links are how an organisation is tied to the profiles an engine already trusts, and
+  // are the single most direct on-page entity signal available.
+  let hasSameAs = false;
+  $('script[type="application/ld+json"]').each((_, el) => {
+    try { if (/"sameAs"/i.test($(el).contents().text())) hasSameAs = true; } catch { /* ignore */ }
+  });
+  const socialLinks = $('a[href*="linkedin.com"], a[href*="facebook.com"], a[href*="instagram.com"], a[href*="x.com"], a[href*="twitter.com"], a[href*="youtube.com"]').length;
+  present.externalProfiles = hasSameAs || socialLinks > 0;
+
+  const LABELS = {
+    namedPeople: 'named people (founders, team, or authors)',
+    clientEvidence: 'client evidence (case studies, testimonials, named clients)',
+    credentials: 'credentials (certifications, awards, memberships, years in business)',
+    physicalAddress: 'a physical address',
+    directContact: 'direct contact links (tel: / mailto:)',
+    externalProfiles: 'links to external profiles (sameAs, LinkedIn, etc.)'
+  };
+  Object.entries(LABELS).forEach(([k, label]) => { if (!present[k]) missing.push(label); });
+  const score = Object.values(present).filter(Boolean).length;
+  const total = Object.keys(LABELS).length;
+
+  const status = score >= 5 ? 'PASS' : score >= 3 ? 'WARNING' : 'FAIL';
+  return {
+    id: 'authority-signals',
+    title: 'Authority & credibility signals',
+    status,
+    detail: status === 'PASS'
+      ? `${score} of ${total} authority signals present. The page demonstrates a real, identifiable organisation behind it.`
+      : `Only ${score} of ${total} authority signals found. Missing: ${missing.join('; ')}. Generative engines strongly prefer sources that visibly belong to a real, accountable organisation — without these, the site reads as anonymous marketing copy regardless of how well it is built.`,
+    howToFix: status === 'PASS' ? undefined : `Add what is missing: ${missing.join('; ')}. Named people with roles and credentials, named clients with concrete outcomes, and explicit certifications or years in business are the signals that most reliably separate a citable source from generic copy — and they also give the content the specific facts it currently lacks.`,
+    raw: { present, missing, score, total, socialLinks, hasSameAsSchema: hasSameAs }
+  };
+}
+
+// Retrieval works by matching a question to a passage that answers it. Content written as
+// question-and-answer, or structured into lists, tables and definitions, is markedly easier to
+// lift an answer from than continuous prose.
+function checkAnswerFormat($, mainText) {
+  const headings = $('h2,h3,h4').toArray().map(el => $(el).text().trim()).filter(Boolean);
+  const questionHeadings = headings.filter(h => /\?|^(?:how|what|why|when|where|which|who|can|do|does|is|are|should|c[óo]mo|qu[ée]|por qu[ée]|cu[áa]ndo|d[óo]nde|cu[áa]l|qui[ée]n|puede|debe)\b/i.test(h));
+  const lists = $('ul li, ol li').length;
+  const tables = $('table').length;
+  const definitionLists = $('dl').length;
+  const structures = lists + tables * 5 + definitionLists * 3;
+
+  const signals = [];
+  if (questionHeadings.length) signals.push(`${questionHeadings.length} question-form heading(s)`);
+  if (lists) signals.push(`${lists} list item(s)`);
+  if (tables) signals.push(`${tables} table(s)`);
+
+  const good = questionHeadings.length >= 2 || structures >= 12;
+  return {
+    id: 'answer-format',
+    title: 'Answer-shaped content',
+    status: good ? 'PASS' : 'WARNING',
+    detail: good
+      ? `Content is structured for extraction: ${signals.join(', ')}.`
+      : `Little extractable structure found${signals.length ? ` (only ${signals.join(', ')})` : ''}. The page is largely continuous prose, which is harder for an engine to lift a direct answer from than question-and-answer sections, lists or comparison tables.`,
+    howToFix: good ? undefined : 'Rewrite key sections as questions a customer would actually ask, with the answer stated directly in the first sentence beneath each. Add comparison tables and step lists where they fit — these are disproportionately favoured in AI answers, and they make the page more useful to read as well.',
+    raw: { questionHeadings: questionHeadings.slice(0, 8), questionHeadingCount: questionHeadings.length, listItems: lists, tables, definitionLists }
+  };
+}
+
 function analyzePage(pageUrl, html) {
   const $ = cheerio.load(html);
   const title = $('title').first().text().trim();
@@ -1126,7 +1319,17 @@ function analyzePage(pageUrl, html) {
   const a11yHealthCheck = computeAccessibilityTreeHealth(mainCheck, headingSeqCheck, formCheck, images);
   const agenticChecks = [mainCheck, headingSeqCheck, formCheck, a11yHealthCheck];
 
-  return { url: pageUrl, title, metaDescription, schemaTypes, headingInfo, canonical, og, images, mainText, wordCount: mainText ? mainText.split(/\s+/).filter(Boolean).length : 0, checks, agenticChecks };
+  // Counted once and shared, so every check and the reported wordCount are guaranteed to agree.
+  const mainWordCount = mainText ? mainText.split(/\s+/).filter(Boolean).length : 0;
+
+  const depthChecks = [
+    checkContentDepth(mainWordCount),
+    checkPageScope($, mainWordCount),
+    checkAuthoritySignals($, mainText),
+    checkAnswerFormat($, mainText)
+  ];
+
+  return { url: pageUrl, title, metaDescription, schemaTypes, headingInfo, canonical, og, images, mainText, depthChecks, wordCount: mainWordCount, checks, agenticChecks };
 }
 
 // ── Section 4: Agentic Browsing / AI Agent Accessibility ──
@@ -1248,12 +1451,9 @@ function analyzeContentSpecificity(pages) {
       status = 'WARNING';
       detail = `Very few specific, citable facts detected (${entities.properNounCount} proper nouns, ${entities.numberCount} numbers) — content reads as generic. AI engines favor specific, citable content over boilerplate marketing copy.`;
     }
-    const wordCountCheck = p.wordCount < 150
-      ? { status: 'WARNING', detail: `Only ${p.wordCount} words of main content — thin, though not a hard fail on its own.`, howToFix: 'Expand thin pages with more substantive, specific content — very short pages give AI engines little to cite.' }
-      : { status: 'PASS', detail: `${p.wordCount} words of main content.` };
     return { url: p.url, entities, checks: [
+      ...(p.depthChecks || []),
       { id: 'entities', title: 'Named entity / specificity signal', status, detail, howToFix: status === 'PASS' ? undefined : 'Add more specific facts — real numbers, dates, named entities (people, places, product names) — rather than generic marketing language. AI engines favor citable, specific content over vague claims.', raw: entities },
-      { id: 'word-count', title: 'Word count', status: wordCountCheck.status, detail: wordCountCheck.detail, howToFix: wordCountCheck.howToFix, raw: { wordCount: p.wordCount } }
     ] };
   });
 
@@ -1308,7 +1508,7 @@ function averagePageScores(pages) {
 // territory, it is the least reliable thing to measure remotely, and every false result this
 // tool has produced originated there. Letting it carry 45% of the score and clamp the total
 // meant infrastructure noise moved a number that is supposed to track on-page work.
-const ONPAGE_WEIGHTS = { onPage: 0.50, agenticBrowsing: 0.30, contentSpecificity: 0.20 };
+const ONPAGE_WEIGHTS = { onPage: 0.40, agenticBrowsing: 0.20, contentSpecificity: 0.40 };
 
 function computeScore(section1Checks, section2Pages, section4Pages, section3, pagesAnalyzed) {
   const crawlability = scoreChecks(section1Checks);
@@ -1340,7 +1540,7 @@ function computeScore(section1Checks, section2Pages, section4Pages, section3, pa
     unverified: { count: unverified.length, items: unverified.map(c => ({ id: c.id, title: c.title })) },
     // Recorded so a re-audit can tell a genuine change from a rubric change. Bump on any edit
     // to SCORE_POINTS, ONPAGE_WEIGHTS, or which checks feed which section.
-    rubricVersion: 2
+    rubricVersion: 3
   };
 }
 
