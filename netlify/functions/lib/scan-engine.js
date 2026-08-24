@@ -88,18 +88,20 @@ function classifyFetchError(err, timedOut, ms) {
 // DNS and TLS failures are deliberately excluded — those are settled facts that a retry will
 // not change, and retrying them just doubles the wait before an honest answer.
 const RETRYABLE_ERROR_KINDS = new Set(['refused', 'network', 'unknown']);
-const RETRY_BACKOFF_MS = 1500;
+const RETRY_BACKOFF_MS = [1500, 4000];
 
-async function fetchSafe(url, uaString, timeoutMs = FETCH_TIMEOUT_MS, attempt = 0) {
-  const res = await fetchOnce(url, uaString, timeoutMs);
-  if (!res.ok && attempt === 0 && RETRYABLE_ERROR_KINDS.has(res.errorKind)) {
-    await sleep(RETRY_BACKOFF_MS);
-    const retried = await fetchOnce(url, uaString, timeoutMs);
-    // Record that a retry happened, so a site that only responds intermittently is visible as
-    // such in the raw output rather than silently smoothed over.
-    if (retried.ok) return { ...retried, recoveredAfterRetry: true };
-    return { ...retried, retried: true };
+async function fetchSafe(url, uaString, timeoutMs = FETCH_TIMEOUT_MS) {
+  let res = await fetchOnce(url, uaString, timeoutMs);
+  let attempts = 1;
+  for (const backoff of RETRY_BACKOFF_MS) {
+    if (res.ok || !RETRYABLE_ERROR_KINDS.has(res.errorKind)) break;
+    await sleep(backoff);
+    res = await fetchOnce(url, uaString, timeoutMs);
+    attempts++;
   }
+  // Record the attempt count, so a site that only responds intermittently stays visible as such
+  // in the raw output rather than being silently smoothed over.
+  if (attempts > 1) return { ...res, attempts, recoveredAfterRetry: res.ok };
   return res;
 }
 
@@ -110,7 +112,17 @@ async function fetchOnce(url, uaString, timeoutMs = FETCH_TIMEOUT_MS) {
   const started = Date.now();
   try {
     const res = await fetch(url, {
-      headers: { 'User-Agent': uaString, 'Accept': 'text/html,application/xhtml+xml,application/xml,text/xml,*/*' },
+      headers: {
+        'User-Agent': uaString,
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9,es;q=0.8',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Upgrade-Insecure-Requests': '1',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1'
+      },
       redirect: 'follow',
       signal: controller.signal
     });
