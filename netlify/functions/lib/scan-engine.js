@@ -1,6 +1,7 @@
 import * as cheerio from 'cheerio';
 import robotsParser from 'robots-parser';
 import { LAYERS, CHECKS } from './check-registry.js';
+import { t } from './i18n.js';
 
 // ── User-agents under test ──
 // Deliberately includes GPTBot/ClaudeBot alongside a plain browser UA — this is the check that
@@ -809,7 +810,7 @@ function sampleEvenly(urls, n) {
 const PAGE_DISCOVERY_PATTERNS = {
   about: { label: 'About', patterns: ['quienes-somos', 'quiénes-somos', 'sobre-nosotros', 'about-us', 'nosotros', 'about'] },
   faq: { label: 'FAQ', patterns: ['preguntas-frecuentes', 'preguntas', 'faqs', 'faq'] },
-  contact: { label: 'Contact', patterns: ['contactanos', 'contáctanos', 'contact-us', 'contacto', 'contact'] },
+  contact: { label: 'Contact', labelEs: 'contacto', patterns: ['contactanos', 'contáctanos', 'contact-us', 'contacto', 'contact'] },
   services: { label: 'Services', patterns: ['servicios', 'services'] },
   blog: { label: 'Blog', patterns: ['articulos', 'artículos', 'insights', 'noticias', 'blog'] }
 };
@@ -1159,10 +1160,10 @@ function checkJsRendering($, mainText, html) {
 // client sites, and an English-only matcher would classify every page as generic content.
 const PAGE_TYPES = {
   contact: { label: 'Contact', judgeDepth: false, patterns: /(^|\/)(contact|contacto|contactanos|cont[áa]ctanos|contact-us|get-in-touch)(\/|$|\.)/i },
-  legal: { label: 'Legal / policy', judgeDepth: false, patterns: /(^|\/)(privacy|privacidad|terms|terminos|t[ée]rminos|aviso-legal|legal|cookies|politica|pol[íi]tica|disclaimer)(\/|$|\.|-)/i },
-  utility: { label: 'Utility', judgeDepth: false, patterns: /(^|\/)(thank-you|gracias|404|search|buscar|cart|carrito|checkout|login|acceder|sitemap)(\/|$|\.)/i },
-  home: { label: 'Homepage', judgeDepth: true, patterns: null },
-  content: { label: 'Content', judgeDepth: true, patterns: null }
+  legal: { label: 'Legal / policy', labelEs: 'aviso legal o política', judgeDepth: false, patterns: /(^|\/)(privacy|privacidad|terms|terminos|t[ée]rminos|aviso-legal|legal|cookies|politica|pol[íi]tica|disclaimer)(\/|$|\.|-)/i },
+  utility: { label: 'Utility', labelEs: 'utilidad', judgeDepth: false, patterns: /(^|\/)(thank-you|gracias|404|search|buscar|cart|carrito|checkout|login|acceder|sitemap)(\/|$|\.)/i },
+  home: { label: 'Homepage', labelEs: 'portada', judgeDepth: true, patterns: null },
+  content: { label: 'Content', labelEs: 'contenido', judgeDepth: true, patterns: null }
 };
 
 function detectPageType(pageUrl) {
@@ -1347,37 +1348,55 @@ function checkContentDepth(wordCount, pageType) {
   if (pageType && !pageType.judgeDepth) {
     return {
       id: 'content-depth',
-      title: 'Content depth for citation',
+      title: t('Profundidad del contenido para ser citado', 'Content depth for citation'),
       status: 'INFO',
-      detail: `${wordCount} words. This is a ${pageType.label.toLowerCase()} page, which is not expected to carry citable depth — it is excluded from the depth assessment rather than failed for being short.`,
+      detail: t(
+        `${wordCount} palabras. Es una página de ${pageType.labelEs.toLowerCase()}, de la que no se espera contenido citable: queda fuera de la evaluación de profundidad en lugar de suspender por ser breve.`,
+        `${wordCount} words. This is a ${pageType.label.toLowerCase()} page, which is not expected to carry citable depth — it is excluded from the depth assessment rather than failed for being short.`
+      ),
       raw: { wordCount, pageType: pageType.id, judged: false }
     };
   }
   if (wordCount < DEPTH_THIN) {
     return {
       id: 'content-depth',
-      title: 'Content depth for citation',
+      title: t('Profundidad del contenido para ser citado', 'Content depth for citation'),
       status: 'FAIL',
-      detail: `${wordCount} words of main content. Below roughly ${DEPTH_THIN} words there is not enough substance for a generative engine to extract and cite a useful passage — the page can be crawled perfectly and still never be quoted, because there is nothing in it worth quoting.`,
-      howToFix: `Expand to at least ${DEPTH_LIGHT}-${DEPTH_ADEQUATE} words of genuinely substantive content: what the service actually involves, who it is for, how it works, what it costs, what the outcome looks like. Length alone is worthless — the target is specific, concrete material an engine can lift an answer from.`,
+      detail: t(
+        `${wordCount} palabras de contenido principal. Por debajo de unas ${DEPTH_THIN} palabras no hay materia suficiente para que un motor generativo extraiga y cite un pasaje útil. La página puede rastrearse perfectamente y aun así no citarse nunca, sencillamente porque no hay nada que merezca la pena citar.`,
+        `${wordCount} words of main content. Below roughly ${DEPTH_THIN} words there is not enough substance for a generative engine to extract and cite a useful passage — the page can be crawled perfectly and still never be quoted, because there is nothing in it worth quoting.`
+      ),
+      howToFix: t(
+        `Amplía hasta al menos ${DEPTH_LIGHT}-${DEPTH_ADEQUATE} palabras de contenido con sustancia real: en qué consiste el servicio, a quién va dirigido, cómo se desarrolla, qué cuesta y qué resultado cabe esperar. La extensión por sí sola no sirve de nada; lo que se busca es material concreto del que un motor pueda sacar una respuesta.`,
+        `Expand to at least ${DEPTH_LIGHT}-${DEPTH_ADEQUATE} words of genuinely substantive content: what the service actually involves, who it is for, how it works, what it costs, what the outcome looks like. Length alone is worthless — the target is specific, concrete material an engine can lift an answer from.`
+      ),
       raw: { wordCount, band: 'thin' }
     };
   }
   if (wordCount < DEPTH_LIGHT) {
     return {
       id: 'content-depth',
-      title: 'Content depth for citation',
+      title: t('Profundidad del contenido para ser citado', 'Content depth for citation'),
       status: 'WARNING',
-      detail: `${wordCount} words of main content — enough to be indexed, but light. Pages in this range are rarely the source an engine chooses when a more thorough page exists on the same topic elsewhere.`,
-      howToFix: `Build toward ${DEPTH_ADEQUATE}+ words by answering the questions a buyer actually asks: process, timelines, pricing, prerequisites, comparisons with alternatives.`,
+      detail: t(
+        `${wordCount} palabras de contenido principal: suficiente para indexarse, pero escaso. Las páginas en este rango rara vez son la fuente que elige un motor cuando existe otra más completa sobre el mismo tema.`,
+        `${wordCount} words of main content — enough to be indexed, but light. Pages in this range are rarely the source an engine chooses when a more thorough page exists on the same topic elsewhere.`
+      ),
+      howToFix: t(
+        `Acércate a las ${DEPTH_ADEQUATE}+ palabras respondiendo a lo que realmente pregunta un comprador: proceso, plazos, precios, requisitos previos y comparativa con las alternativas.`,
+        `Build toward ${DEPTH_ADEQUATE}+ words by answering the questions a buyer actually asks: process, timelines, pricing, prerequisites, comparisons with alternatives.`
+      ),
       raw: { wordCount, band: 'light' }
     };
   }
   return {
     id: 'content-depth',
-    title: 'Content depth for citation',
+    title: t('Profundidad del contenido para ser citado', 'Content depth for citation'),
     status: 'PASS',
-    detail: `${wordCount} words of main content — ${wordCount >= DEPTH_ADEQUATE ? 'substantial' : 'adequate'} depth for an engine to extract a citable passage.`,
+    detail: t(
+      `${wordCount} palabras de contenido principal: profundidad ${wordCount >= DEPTH_ADEQUATE ? 'amplia' : 'suficiente'} para que un motor extraiga un pasaje citable.`,
+      `${wordCount} words of main content — ${wordCount >= DEPTH_ADEQUATE ? 'substantial' : 'adequate'} depth for an engine to extract a citable passage.`
+    ),
     raw: { wordCount, band: wordCount >= DEPTH_ADEQUATE ? 'substantial' : 'adequate' }
   };
 }
@@ -1403,9 +1422,12 @@ function checkPageScope($, wordCount, pageType) {
   if (pageType && !pageType.judgeDepth) {
     return {
       id: 'page-scope',
-      title: 'Page scope — should this be split?',
+      title: t('Alcance de la página: ¿debería dividirse?', 'Page scope — should this be split?'),
       status: 'INFO',
-      detail: `Not assessed — a ${pageType.label.toLowerCase()} page is single-purpose by design and is never a candidate for splitting.`,
+      detail: t(
+        `No se evalúa: una página de ${pageType.labelEs.toLowerCase()} tiene un único propósito por definición y nunca es candidata a dividirse.`,
+        `Not assessed — a ${pageType.label.toLowerCase()} page is single-purpose by design and is never a candidate for splitting.`
+      ),
       raw: { pageType: pageType.id, judged: false }
     };
   }
@@ -1418,36 +1440,54 @@ function checkPageScope($, wordCount, pageType) {
   // an engine to retrieve no matter how many topics it covers.
   const anchorOnlyNav = anchorNavLinks.length >= 3 && realNavLinks.length === 0;
   const avgSectionWords = sections.length ? Math.round(sections.reduce((n, s) => n + s.words, 0) / sections.length) : 0;
-
   const raw = { sectionCount: sections.length, avgSectionWords, anchorOnlyNav, anchorNavLinks: anchorNavLinks.length, realNavLinks: realNavLinks.length, sections: sections.slice(0, 12) };
+  const heads = sections.map(s => s.heading).slice(0, 5).join('; ');
 
   if (anchorOnlyNav && sections.length >= 3) {
     return {
       id: 'page-scope',
-      title: 'Page scope — should this be split?',
+      title: t('Alcance de la página: ¿debería dividirse?', 'Page scope — should this be split?'),
       status: 'FAIL',
-      detail: `This is a single-page site covering ${sections.length} distinct topics (${sections.map(s => s.heading).slice(0, 5).join('; ')}${sections.length > 5 ? '; …' : ''}), averaging ${avgSectionWords} words each. Every navigation link is an in-page anchor, so there is only one document in existence. Generative engines retrieve and cite at page level, which means no topic here can be returned for a query about it — they are all competing inside one thin page.`,
-      howToFix: `Split into separate pages, one per topic, each with its own URL and its own place in the navigation: ${sections.map(s => s.heading).slice(0, 5).join(', ')}. Then give each ${DEPTH_LIGHT}+ words of specific content. This is the highest-impact structural change available to this site, and every other content recommendation depends on it.`,
+      detail: t(
+        `Es un sitio de una sola página que abarca ${sections.length} temas distintos (${heads}${sections.length > 5 ? '; …' : ''}), con una media de ${avgSectionWords} palabras cada uno. Todos los enlaces de navegación son anclas internas, así que solo existe un documento. Los motores generativos recuperan y citan a nivel de página: ningún tema de aquí puede devolverse ante una consulta sobre él, porque todos compiten dentro de una misma página escasa.`,
+        `This is a single-page site covering ${sections.length} distinct topics (${heads}${sections.length > 5 ? '; …' : ''}), averaging ${avgSectionWords} words each. Every navigation link is an in-page anchor, so there is only one document in existence. Generative engines retrieve and cite at page level, which means no topic here can be returned for a query about it — they are all competing inside one thin page.`
+      ),
+      howToFix: t(
+        `Divide el sitio en páginas independientes, una por tema, cada una con su propia URL y su lugar en la navegación: ${heads}. Después dale a cada una ${DEPTH_LIGHT}+ palabras de contenido específico. Es el cambio estructural de mayor impacto disponible para este sitio, y del que depende cualquier otra recomendación de contenido.`,
+        `Split into separate pages, one per topic, each with its own URL and its own place in the navigation: ${heads}. Then give each ${DEPTH_LIGHT}+ words of specific content. This is the highest-impact structural change available to this site, and every other content recommendation depends on it.`
+      ),
       raw
     };
   }
   if (sections.length >= 4 && avgSectionWords > 0 && avgSectionWords < 120) {
     return {
       id: 'page-scope',
-      title: 'Page scope — should this be split?',
+      title: t('Alcance de la página: ¿debería dividirse?', 'Page scope — should this be split?'),
       status: 'WARNING',
-      detail: `The page covers ${sections.length} topics at an average of ${avgSectionWords} words each. Each section is too thin to be retrieved on its own, and together they dilute what the page is about.`,
-      howToFix: 'Promote the sections that deserve to rank into their own pages with substantive content, and keep only a summary with a link on this page. A page that is about one thing is retrievable; a page about six things is about nothing.',
+      detail: t(
+        `La página abarca ${sections.length} temas con una media de ${avgSectionWords} palabras cada uno. Cada apartado es demasiado breve para recuperarse por sí solo y, en conjunto, diluyen de qué trata la página.`,
+        `The page covers ${sections.length} topics at an average of ${avgSectionWords} words each. Each section is too thin to be retrieved on its own, and together they dilute what the page is about.`
+      ),
+      howToFix: t(
+        'Lleva a su propia página, con contenido sustancial, los apartados que merezcan posicionar, y deja aquí solo un resumen con enlace. Una página que trata de una sola cosa es recuperable; una que trata de seis no trata de ninguna.',
+        'Promote the sections that deserve to rank into their own pages with substantive content, and keep only a summary with a link on this page. A page that is about one thing is retrievable; a page about six things is about nothing.'
+      ),
       raw
     };
   }
   return {
     id: 'page-scope',
-    title: 'Page scope — should this be split?',
+    title: t('Alcance de la página: ¿debería dividirse?', 'Page scope — should this be split?'),
     status: 'PASS',
     detail: sections.length
-      ? `${sections.length} content section(s) averaging ${avgSectionWords} words. The page has a coherent scope and does not need splitting.`
-      : 'No multi-topic structure detected that would warrant splitting this page.',
+      ? t(
+          `${sections.length} sección(es) de contenido con una media de ${avgSectionWords} palabras. La página tiene un alcance coherente y no necesita dividirse.`,
+          `${sections.length} content section(s) averaging ${avgSectionWords} words. The page has a coherent scope and does not need splitting.`
+        )
+      : t(
+          'No se detecta una estructura multitema que justifique dividir esta página.',
+          'No multi-topic structure detected that would warrant splitting this page.'
+        ),
     raw
   };
 }
