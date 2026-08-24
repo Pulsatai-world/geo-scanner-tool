@@ -1003,12 +1003,21 @@ function checkFaqSchemaMatch($, mainText) {
   const status = ratio >= 0.7 ? 'PASS' : 'WARNING';
   return {
     id: 'faq-schema-match',
-    title: 'FAQPage schema vs. visible content match',
+    title: t('Coincidencia del schema FAQPage con el contenido visible', 'FAQPage schema vs. visible content match'),
     status,
     detail: status === 'PASS'
-      ? `${matched}/${pairs.length} FAQPage schema question(s) match text visible on the page.`
-      : `Only ${matched}/${pairs.length} FAQPage schema question(s) could be matched to visible content on the page.`,
-    howToFix: status === 'PASS' ? undefined : 'Make sure FAQPage schema mirrors real, visible Q&A content on the page — schema that doesn\'t match what a visitor actually sees can be flagged as low-quality or manipulative by AI engines.',
+      ? t(
+          `${matched} de ${pairs.length} pregunta(s) del schema FAQPage coinciden con texto visible en la página.`,
+          `${matched}/${pairs.length} FAQPage schema question(s) match text visible on the page.`
+        )
+      : t(
+          `Solo ${matched} de ${pairs.length} pregunta(s) del schema FAQPage han podido asociarse a contenido visible en la página.`,
+          `Only ${matched}/${pairs.length} FAQPage schema question(s) could be matched to visible content on the page.`
+        ),
+    howToFix: status === 'PASS' ? undefined : t(
+      'Asegúrate de que el schema FAQPage refleje preguntas y respuestas reales y visibles en la página. Un marcado que no coincide con lo que ve el visitante puede interpretarse como de baja calidad o manipulador.',
+      'Make sure FAQPage schema mirrors real, visible Q&A content on the page — schema that doesn\'t match what a visitor actually sees can be flagged as low-quality or manipulative by AI engines.'
+    ),
     raw: { totalQuestions: pairs.length, matched }
   };
 }
@@ -1113,12 +1122,21 @@ function checkContactMachineReadability($, mainText) {
   if (!found && !pageHasPlainTextContactInfo(mainText)) return null; // no contact info of any kind on this page
   return {
     id: 'contact-machine-readable',
-    title: 'Contact info machine-readability',
+    title: t('Datos de contacto legibles por máquina', 'Contact info machine-readability'),
     status: found ? 'PASS' : 'WARNING',
     detail: found
-      ? `Machine-readable contact method(s) found: ${telLinks} tel: link(s), ${mailtoLinks} mailto: link(s)${hasContactPointSchema ? ', ContactPoint schema present' : ''}.`
-      : 'Contact info appears to be present as plain text only — no tel:/mailto: links or ContactPoint schema found.',
-    howToFix: found ? undefined : 'Wrap phone numbers in tel: links and emails in mailto: links, and add ContactPoint schema. This lets AI agents (and mobile users) actually act on the contact info, not just read it.',
+      ? t(
+          `Se encuentran vías de contacto legibles por máquina: ${telLinks} enlace(s) tel:, ${mailtoLinks} enlace(s) mailto:${hasContactPointSchema ? ', y schema ContactPoint presente' : ''}.`,
+          `Machine-readable contact method(s) found: ${telLinks} tel: link(s), ${mailtoLinks} mailto: link(s)${hasContactPointSchema ? ', ContactPoint schema present' : ''}.`
+        )
+      : t(
+          'Los datos de contacto parecen estar solo como texto plano: no se encuentran enlaces tel: ni mailto:, ni schema ContactPoint.',
+          'Contact info appears to be present as plain text only — no tel:/mailto: links or ContactPoint schema found.'
+        ),
+    howToFix: found ? undefined : t(
+      'Envuelve los teléfonos en enlaces tel: y los correos en enlaces mailto:, y añade schema ContactPoint. Así los agentes de IA (y quien navegue desde el móvil) pueden actuar sobre los datos de contacto, no solo leerlos.',
+      'Wrap phone numbers in tel: links and emails in mailto: links, and add ContactPoint schema. This lets AI agents (and mobile users) actually act on the contact info, not just read it.'
+    ),
     raw: { telLinks, mailtoLinks, hasContactPointSchema }
   };
 }
@@ -1147,24 +1165,33 @@ function checkJsRendering($, mainText, html) {
   if (!shellLike && !emptyMount && !(hasNoscriptWarning && words < 150)) {
     return {
       id: 'js-rendering',
-      title: 'Content visible without JavaScript',
+      title: t('Contenido visible sin JavaScript', 'Content visible without JavaScript'),
       status: 'PASS',
-      detail: `The server returns ${words} words of readable content before any JavaScript runs, so non-rendering crawlers can read this page.`,
+      detail: t(
+        `El servidor devuelve ${words} palabras de contenido legible antes de que se ejecute ningún JavaScript, así que los rastreadores que no renderizan pueden leer esta página.`,
+        `The server returns ${words} words of readable content before any JavaScript runs, so non-rendering crawlers can read this page.`
+      ),
       raw: { serverRenderedWords: words, mountElement: mountEl || null, scriptCount }
     };
   }
 
-  const evidence = [];
-  if (shellLike) evidence.push(`only ${words} words of text in the server response alongside ${scriptCount} script file(s)`);
-  if (emptyMount) evidence.push(`the ${mountEl} mount point is empty (${mountText} words)`);
-  if (hasNoscriptWarning) evidence.push('a <noscript> block telling visitors to enable JavaScript');
+  const evEs = []; const evEn = [];
+  if (shellLike) { evEs.push(`solo ${words} palabras de texto en la respuesta del servidor junto a ${scriptCount} archivo(s) de script`); evEn.push(`only ${words} words of text in the server response alongside ${scriptCount} script file(s)`); }
+  if (emptyMount) { evEs.push(`el punto de montaje ${mountEl} está vacío (${mountText} palabras)`); evEn.push(`the ${mountEl} mount point is empty (${mountText} words)`); }
+  if (hasNoscriptWarning) { evEs.push('un bloque <noscript> que pide al visitante activar JavaScript'); evEn.push('a <noscript> block telling visitors to enable JavaScript'); }
 
   return {
     id: 'js-rendering',
-    title: 'Content visible without JavaScript',
+    title: t('Contenido visible sin JavaScript', 'Content visible without JavaScript'),
     status: 'FAIL',
-    detail: `This page appears to render its content client-side — ${evidence.join(', ')}. Crawlers that do not execute JavaScript receive an effectively blank page. Treat the other on-page results for this page as unreliable: checks reporting missing headings, thin content or absent schema are most likely observing the empty shell rather than the real page.`,
-    howToFix: 'Server-side render this page, or pre-render it at build time, so the HTML response contains the content itself. Most AI crawlers do not execute JavaScript, which makes this the single highest-impact on-page fix available — every other GEO signal on the page is invisible until it is resolved.',
+    detail: t(
+      `Esta página parece renderizar su contenido en el cliente: ${evEs.join(', ')}. Los rastreadores que no ejecutan JavaScript reciben una página prácticamente en blanco. Toma el resto de resultados en página de esta URL como poco fiables: las comprobaciones que informan de encabezados ausentes, contenido escaso o falta de datos estructurados están viendo el armazón vacío, no la página real.`,
+      `This page appears to render its content client-side — ${evEn.join(', ')}. Crawlers that do not execute JavaScript receive an effectively blank page. Treat the other on-page results for this page as unreliable: checks reporting missing headings, thin content or absent schema are most likely observing the empty shell rather than the real page.`
+    ),
+    howToFix: t(
+      'Renderiza esta página en el servidor, o pregenera el HTML en la compilación, de modo que la respuesta contenga ya el contenido. La mayoría de rastreadores de IA no ejecutan JavaScript, lo que convierte esto en la corrección en página de mayor impacto disponible: cualquier otra señal GEO de la página es invisible hasta resolverlo.',
+      'Server-side render this page, or pre-render it at build time, so the HTML response contains the content itself. Most AI crawlers do not execute JavaScript, which makes this the single highest-impact on-page fix available — every other GEO signal on the page is invisible until it is resolved.'
+    ),
     raw: { serverRenderedWords: words, mountElement: mountEl || null, mountWords: mountText, scriptCount, hasNoscriptWarning }
   };
 }
@@ -1262,28 +1289,43 @@ function checkSchemaCompleteness($) {
   if (broken.length) {
     return {
       id: 'schema-completeness',
-      title: 'Structured data completeness',
+      title: t('Integridad de los datos estructurados', 'Structured data completeness'),
       status: 'FAIL',
-      detail: `Structured data is present but incomplete: ${broken.map(b => `${b.type} is missing ${b.missingRequired.join(', ')}`).join('; ')}. A type missing its required properties cannot be interpreted, so it delivers nothing despite being on the page.`,
-      howToFix: `Add the missing required properties: ${broken.map(b => `${b.type} needs ${b.missingRequired.join(', ')}`).join('; ')}. Validate the result with Google's Rich Results Test or schema.org's validator before considering it done.`,
+      detail: t(
+        `Hay datos estructurados, pero incompletos: ${broken.map(b => `a ${b.type} le falta ${b.missingRequired.join(', ')}`).join('; ')}. Un tipo al que le faltan sus propiedades obligatorias no puede interpretarse, así que no aporta nada pese a estar en la página.`,
+        `Structured data is present but incomplete: ${broken.map(b => `${b.type} is missing ${b.missingRequired.join(', ')}`).join('; ')}. A type missing its required properties cannot be interpreted, so it delivers nothing despite being on the page.`
+      ),
+      howToFix: t(
+        `Añade las propiedades obligatorias que faltan: ${broken.map(b => `${b.type} necesita ${b.missingRequired.join(', ')}`).join('; ')}. Valida el resultado con la Prueba de resultados enriquecidos de Google o con el validador de schema.org antes de darlo por terminado.`,
+        `Add the missing required properties: ${broken.map(b => `${b.type} needs ${b.missingRequired.join(', ')}`).join('; ')}. Validate the result with Google's Rich Results Test or schema.org's validator before considering it done.`
+      ),
       raw: { assessed }
     };
   }
   if (thin.length) {
     return {
       id: 'schema-completeness',
-      title: 'Structured data completeness',
+      title: t('Integridad de los datos estructurados', 'Structured data completeness'),
       status: 'WARNING',
-      detail: `Structured data is valid but sparse: ${thin.map(t => `${t.type} omits ${t.missingRecommended.join(', ')}`).join('; ')}. These are the properties that connect the markup to a recognisable real-world entity.`,
-      howToFix: `Fill in the missing properties where they apply: ${thin.map(t => `${t.type} → ${t.missingRecommended.join(', ')}`).join('; ')}. sameAs is the highest-value of these — it links the entity to profiles engines already trust.`,
+      detail: t(
+        `Los datos estructurados son válidos pero escuetos: ${thin.map(x => `${x.type} omite ${x.missingRecommended.join(', ')}`).join('; ')}. Son precisamente las propiedades que conectan el marcado con una entidad reconocible del mundo real.`,
+        `Structured data is valid but sparse: ${thin.map(x => `${x.type} omits ${x.missingRecommended.join(', ')}`).join('; ')}. These are the properties that connect the markup to a recognisable real-world entity.`
+      ),
+      howToFix: t(
+        `Completa las propiedades que faltan donde apliquen: ${thin.map(x => `${x.type} → ${x.missingRecommended.join(', ')}`).join('; ')}. sameAs es la de mayor valor: vincula la entidad con perfiles en los que los motores ya confían.`,
+        `Fill in the missing properties where they apply: ${thin.map(x => `${x.type} → ${x.missingRecommended.join(', ')}`).join('; ')}. sameAs is the highest-value of these — it links the entity to profiles engines already trust.`
+      ),
       raw: { assessed }
     };
   }
   return {
     id: 'schema-completeness',
-    title: 'Structured data completeness',
+    title: t('Integridad de los datos estructurados', 'Structured data completeness'),
     status: 'PASS',
-    detail: `${known.length} structured data type(s) checked (${known.join(', ')}) — all required properties present and reasonably complete.`,
+    detail: t(
+      `${known.length} tipo(s) de datos estructurados comprobados (${known.join(', ')}): todas las propiedades obligatorias están presentes y el marcado es razonablemente completo.`,
+      `${known.length} structured data type(s) checked (${known.join(', ')}) — all required properties present and reasonably complete.`
+    ),
     raw: { assessed }
   };
 }
@@ -1645,14 +1687,144 @@ function analyzePage(pageUrl, html) {
   const mainText = $content('body').text().replace(/\s+/g, ' ').trim();
 
   const checks = [];
-  checks.push({ id: 'title', title: 'Title tag', status: !title ? 'FAIL' : (title.length > 60 ? 'WARNING' : 'PASS'), detail: !title ? 'Missing <title> tag.' : `"${title}" — ${title.length} characters${title.length > 60 ? ' (over the ~60 char guideline; may get truncated in results).' : '.'}`, howToFix: !title ? 'Add a unique, descriptive <title> tag to this page — it\'s one of the most basic and important on-page signals for both search and AI engines.' : (title.length > 60 ? 'Shorten the title tag to under ~60 characters so it isn\'t truncated in search results and AI citations.' : undefined), raw: { title, length: title.length } });
-  checks.push({ id: 'meta-description', title: 'Meta description', status: !metaDescription ? 'FAIL' : (metaDescription.length > 160 ? 'WARNING' : 'PASS'), detail: !metaDescription ? 'Missing meta description.' : `${metaDescription.length} characters${metaDescription.length > 160 ? ' (over the ~160 char guideline; may get truncated.)' : '.'}`, howToFix: !metaDescription ? 'Add a unique meta description summarizing the page\'s content and value proposition.' : (metaDescription.length > 160 ? 'Trim the meta description to under ~155-160 characters so it doesn\'t get truncated in search results. Keep the core value proposition and a call to action.' : undefined), raw: { metaDescription, length: metaDescription.length } });
-  checks.push({ id: 'schema', title: 'Schema.org / JSON-LD', status: schemaTypes.length === 0 ? 'FAIL' : (missingCommonSchema.length > 4 ? 'WARNING' : 'PASS'), detail: schemaTypes.length === 0 ? 'No JSON-LD structured data found on this page.' : `Found: ${schemaTypes.join(', ')}. Missing common types: ${missingCommonSchema.join(', ') || 'none'}.`, howToFix: schemaTypes.length === 0 ? 'Add JSON-LD structured data (schema.org) appropriate to this page\'s content — at minimum Organization and WebSite site-wide, plus FAQPage if there\'s FAQ content, Service/Product/LocalBusiness where relevant. This is one of the highest-leverage signals for AI citation.' : (missingCommonSchema.length > 4 ? `Consider adding schema for: ${missingCommonSchema.join(', ')} — whichever are actually relevant to this page's content.` : undefined), raw: { present: schemaTypes, missing: missingCommonSchema } });
-  checks.push({ id: 'headings', title: 'Heading structure', status: headingInfo.h1Count === 1 && !headingInfo.skippedLevel ? 'PASS' : (headingInfo.h1Count === 0 ? 'FAIL' : 'WARNING'), detail: headingInfo.h1Count === 0 ? 'No <h1> found on the page.' : headingInfo.h1Count > 1 ? `${headingInfo.h1Count} <h1> tags found — should be exactly one.` : headingInfo.skippedLevel ? 'Exactly one <h1>, but the heading hierarchy skips a level somewhere (e.g. H1 straight to H3/H4).' : 'Exactly one <h1> and no skipped heading levels.', howToFix: (headingInfo.h1Count === 1 && !headingInfo.skippedLevel) ? undefined : 'Use exactly one <h1> per page representing the main topic, and don\'t skip heading levels (H1 → H2 → H3) — use CSS instead of heading level to control visual size.', raw: headingInfo });
-  checks.push({ id: 'canonical', title: 'Canonical tag', status: !canonical.present ? 'WARNING' : (canonical.crossDomain ? 'FAIL' : 'PASS'), detail: !canonical.present ? 'No canonical tag present.' : canonical.crossDomain ? `Canonical points to a different domain/host (${canonical.href}) — a common bug after site migrations, leaving canonicals pointed at staging.` : canonical.selfReferencing ? 'Canonical tag is present and self-referencing.' : `Canonical present and points elsewhere on the same domain (${canonical.href}) — confirm this is intentional.`, howToFix: !canonical.present ? 'Add a self-referencing <link rel="canonical"> tag pointing to this exact page\'s URL — this prevents duplicate-content confusion.' : (canonical.crossDomain ? 'Update the canonical tag to point to this page\'s own production URL, not a staging/different domain — a common leftover from site migrations that can suppress the live page from being indexed.' : undefined), raw: canonical });
+  checks.push({
+    id: 'title',
+    title: t('Etiqueta title', 'Title tag'),
+    status: !title ? 'FAIL' : (title.length > 60 ? 'WARNING' : 'PASS'),
+    detail: !title
+      ? t('Falta la etiqueta <title>.', 'Missing <title> tag.')
+      : t(
+          `«${title}» — ${title.length} caracteres${title.length > 60 ? ' (por encima de la referencia de ~60; puede truncarse en los resultados).' : '.'}`,
+          `"${title}" — ${title.length} characters${title.length > 60 ? ' (over the ~60 char guideline; may get truncated in results).' : '.'}`
+        ),
+    howToFix: !title
+      ? t(
+          'Añade una etiqueta <title> única y descriptiva a esta página. Es una de las señales en página más básicas e importantes, tanto para buscadores como para motores de IA.',
+          'Add a unique, descriptive <title> tag to this page — it\'s one of the most basic and important on-page signals for both search and AI engines.'
+        )
+      : (title.length > 60 ? t(
+          'Acorta el title por debajo de ~60 caracteres para que no se trunque en los resultados de búsqueda ni en las citas de IA.',
+          'Shorten the title tag to under ~60 characters so it isn\'t truncated in search results and AI citations.'
+        ) : undefined),
+    raw: { title, length: title.length }
+  });
+  checks.push({
+    id: 'meta-description',
+    title: t('Meta description', 'Meta description'),
+    status: !metaDescription ? 'FAIL' : (metaDescription.length > 160 ? 'WARNING' : 'PASS'),
+    detail: !metaDescription
+      ? t('Falta la meta description.', 'Missing meta description.')
+      : t(
+          `${metaDescription.length} caracteres${metaDescription.length > 160 ? ' (por encima de la referencia de ~160; puede truncarse).' : '.'}`,
+          `${metaDescription.length} characters${metaDescription.length > 160 ? ' (over the ~160 char guideline; may get truncated.)' : '.'}`
+        ),
+    howToFix: !metaDescription
+      ? t(
+          'Añade una meta description única que resuma el contenido de la página y su propuesta de valor.',
+          'Add a unique meta description summarizing the page\'s content and value proposition.'
+        )
+      : (metaDescription.length > 160 ? t(
+          'Recorta la meta description por debajo de ~155-160 caracteres para que no se trunque en los resultados. Conserva la propuesta de valor y una llamada a la acción.',
+          'Trim the meta description to under ~155-160 characters so it doesn\'t get truncated in search results. Keep the core value proposition and a call to action.'
+        ) : undefined),
+    raw: { metaDescription, length: metaDescription.length }
+  });
+  checks.push({
+    id: 'schema',
+    title: t('Datos estructurados (Schema.org / JSON-LD)', 'Schema.org / JSON-LD'),
+    status: schemaTypes.length === 0 ? 'FAIL' : (missingCommonSchema.length > 4 ? 'WARNING' : 'PASS'),
+    detail: schemaTypes.length === 0
+      ? t('No se encuentran datos estructurados JSON-LD en esta página.', 'No JSON-LD structured data found on this page.')
+      : t(
+          `Presentes: ${schemaTypes.join(', ')}. Tipos habituales ausentes: ${missingCommonSchema.join(', ') || 'ninguno'}.`,
+          `Found: ${schemaTypes.join(', ')}. Missing common types: ${missingCommonSchema.join(', ') || 'none'}.`
+        ),
+    howToFix: schemaTypes.length === 0
+      ? t(
+          'Añade datos estructurados JSON-LD (schema.org) acordes al contenido de la página: como mínimo Organization y WebSite en todo el sitio, más FAQPage si hay preguntas frecuentes, y Service, Product o LocalBusiness donde corresponda. Es una de las señales de mayor impacto para ser citado por la IA.',
+          'Add JSON-LD structured data (schema.org) appropriate to this page\'s content — at minimum Organization and WebSite site-wide, plus FAQPage if there\'s FAQ content, Service/Product/LocalBusiness where relevant. This is one of the highest-leverage signals for AI citation.'
+        )
+      : (missingCommonSchema.length > 4 ? t(
+          `Valora añadir schema para: ${missingCommonSchema.join(', ')}, aquellos que realmente encajen con el contenido de esta página.`,
+          `Consider adding schema for: ${missingCommonSchema.join(', ')} — whichever are actually relevant to this page's content.`
+        ) : undefined),
+    raw: { present: schemaTypes, missing: missingCommonSchema }
+  });
+  checks.push({
+    id: 'headings',
+    title: t('Estructura de encabezados', 'Heading structure'),
+    status: headingInfo.h1Count === 1 && !headingInfo.skippedLevel ? 'PASS' : (headingInfo.h1Count === 0 ? 'FAIL' : 'WARNING'),
+    detail: headingInfo.h1Count === 0
+      ? t('No se encuentra ningún <h1> en la página.', 'No <h1> found on the page.')
+      : headingInfo.h1Count > 1
+        ? t(`Se encuentran ${headingInfo.h1Count} etiquetas <h1>; debería haber exactamente una.`, `${headingInfo.h1Count} <h1> tags found — should be exactly one.`)
+        : headingInfo.skippedLevel
+          ? t('Hay exactamente un <h1>, pero la jerarquía de encabezados se salta algún nivel (por ejemplo, de H1 directamente a H3 o H4).', 'Exactly one <h1>, but the heading hierarchy skips a level somewhere (e.g. H1 straight to H3/H4).')
+          : t('Exactamente un <h1> y ningún nivel de encabezado omitido.', 'Exactly one <h1> and no skipped heading levels.'),
+    howToFix: (headingInfo.h1Count === 1 && !headingInfo.skippedLevel) ? undefined : t(
+      'Usa exactamente un <h1> por página, que represente el tema principal, y no te saltes niveles (H1 → H2 → H3). Controla el tamaño visual con CSS, no cambiando el nivel del encabezado.',
+      'Use exactly one <h1> per page representing the main topic, and don\'t skip heading levels (H1 → H2 → H3) — use CSS instead of heading level to control visual size.'
+    ),
+    raw: headingInfo
+  });
+  checks.push({
+    id: 'canonical',
+    title: t('Etiqueta canonical', 'Canonical tag'),
+    status: !canonical.present ? 'WARNING' : (canonical.crossDomain ? 'FAIL' : 'PASS'),
+    detail: !canonical.present
+      ? t('No hay etiqueta canonical.', 'No canonical tag present.')
+      : canonical.crossDomain
+        ? t(
+            `La canonical apunta a otro dominio o host (${canonical.href}). Es un fallo habitual tras una migración, con las canonical apuntando todavía al entorno de pruebas.`,
+            `Canonical points to a different domain/host (${canonical.href}) — a common bug after site migrations, leaving canonicals pointed at staging.`
+          )
+        : canonical.selfReferencing
+          ? t('La etiqueta canonical está presente y apunta a la propia página.', 'Canonical tag is present and self-referencing.')
+          : t(
+              `Hay canonical y apunta a otra dirección del mismo dominio (${canonical.href}); confirma que es intencionado.`,
+              `Canonical present and points elsewhere on the same domain (${canonical.href}) — confirm this is intentional.`
+            ),
+    howToFix: !canonical.present
+      ? t(
+          'Añade una etiqueta <link rel="canonical"> que apunte a la URL exacta de esta misma página. Evita la confusión por contenido duplicado.',
+          'Add a self-referencing <link rel="canonical"> tag pointing to this exact page\'s URL — this prevents duplicate-content confusion.'
+        )
+      : (canonical.crossDomain ? t(
+          'Corrige la canonical para que apunte a la URL de producción de esta página, no a otro dominio ni al entorno de pruebas. Es un resto habitual de las migraciones y puede impedir que la página en vivo se indexe.',
+          'Update the canonical tag to point to this page\'s own production URL, not a staging/different domain — a common leftover from site migrations that can suppress the live page from being indexed.'
+        ) : undefined),
+    raw: canonical
+  });
   const ogMissing = ['title', 'description', 'type'].filter(k => !og[k]);
-  checks.push({ id: 'open-graph', title: 'Open Graph tags', status: ogMissing.length === 0 ? 'PASS' : (ogMissing.length === 3 ? 'FAIL' : 'WARNING'), detail: ogMissing.length === 0 ? 'og:title, og:description and og:type all present.' : `Missing: ${ogMissing.map(k => 'og:' + k).join(', ')}.`, howToFix: ogMissing.length === 0 ? undefined : `Add the missing Open Graph tags (${ogMissing.map(k => 'og:' + k).join(', ')}) — these control how the page appears when shared/cited, including by some AI tools that fetch preview metadata.`, raw: og });
-  checks.push({ id: 'image-alt', title: 'Image alt text coverage', status: images.total === 0 ? 'PASS' : (images.pct >= 80 ? 'PASS' : images.pct >= 40 ? 'WARNING' : 'FAIL'), detail: images.total === 0 ? 'No <img> tags on this page.' : `${images.withAlt}/${images.total} images (${images.pct}%) have non-empty alt text.`, howToFix: (images.total === 0 || images.pct >= 80) ? undefined : 'Add descriptive alt text to images missing it — this helps both accessibility tools and AI engines understand image content, especially on product/service pages.', raw: images });
+  checks.push({
+    id: 'open-graph',
+    title: t('Etiquetas Open Graph', 'Open Graph tags'),
+    status: ogMissing.length === 0 ? 'PASS' : (ogMissing.length === 3 ? 'FAIL' : 'WARNING'),
+    detail: ogMissing.length === 0
+      ? t('og:title, og:description y og:type están las tres presentes.', 'og:title, og:description and og:type all present.')
+      : t(`Faltan: ${ogMissing.map(k => 'og:' + k).join(', ')}.`, `Missing: ${ogMissing.map(k => 'og:' + k).join(', ')}.`),
+    howToFix: ogMissing.length === 0 ? undefined : t(
+      `Añade las etiquetas Open Graph que faltan (${ogMissing.map(k => 'og:' + k).join(', ')}). Controlan cómo se muestra la página al compartirse o citarse, incluidas algunas herramientas de IA que recuperan metadatos de vista previa.`,
+      `Add the missing Open Graph tags (${ogMissing.map(k => 'og:' + k).join(', ')}) — these control how the page appears when shared/cited, including by some AI tools that fetch preview metadata.`
+    ),
+    raw: og
+  });
+  checks.push({
+    id: 'image-alt',
+    title: t('Cobertura de texto alternativo en imágenes', 'Image alt text coverage'),
+    status: images.total === 0 ? 'PASS' : (images.pct >= 80 ? 'PASS' : images.pct >= 40 ? 'WARNING' : 'FAIL'),
+    detail: images.total === 0
+      ? t('Esta página no tiene etiquetas <img>.', 'No <img> tags on this page.')
+      : t(
+          `${images.withAlt} de ${images.total} imágenes (${images.pct}%) tienen texto alternativo con contenido.`,
+          `${images.withAlt}/${images.total} images (${images.pct}%) have non-empty alt text.`
+        ),
+    howToFix: (images.total === 0 || images.pct >= 80) ? undefined : t(
+      'Añade texto alternativo descriptivo a las imágenes que no lo tienen. Ayuda tanto a las herramientas de accesibilidad como a los motores de IA a entender el contenido de la imagen, sobre todo en páginas de producto o servicio.',
+      'Add descriptive alt text to images missing it — this helps both accessibility tools and AI engines understand image content, especially on product/service pages.'
+    ),
+    raw: images
+  });
   // Added checks (page discovery add-on) — each returns null when not applicable to this page
   // (e.g. no FAQ schema present) rather than forcing an irrelevant row.
   [checkJsRendering($, mainText, html), checkSchemaCompleteness($), checkFaqSchemaMatch($, mainText), checkAuthorAttribution($, mainText), checkFirstWordsSpecificity(mainText), checkContactMachineReadability($, mainText)]
@@ -1694,10 +1866,15 @@ function checkMainLandmark($) {
   const hasMain = $('main').length > 0 || $('[role="main"]').length > 0;
   return {
     id: 'main-landmark',
-    title: 'Main landmark presence',
+    title: t('Presencia de la región <main>', 'Main landmark presence'),
     status: hasMain ? 'PASS' : 'FAIL',
-    detail: hasMain ? 'A <main> element (or role="main") is present.' : 'No <main> element or role="main" landmark found.',
-    howToFix: hasMain ? undefined : 'Wrap the primary content of the page in a <main> tag. This helps both assistive technology and AI crawlers identify the core content versus navigation/sidebar/footer.',
+    detail: hasMain
+      ? t('Existe un elemento <main> (o role="main").', 'A <main> element (or role="main") is present.')
+      : t('No se encuentra ningún elemento <main> ni región role="main".', 'No <main> element or role="main" landmark found.'),
+    howToFix: hasMain ? undefined : t(
+      'Envuelve el contenido principal de la página en una etiqueta <main>. Ayuda tanto a las tecnologías de apoyo como a los rastreadores de IA a distinguir el contenido central de la navegación, la barra lateral y el pie.',
+      'Wrap the primary content of the page in a <main> tag. This helps both assistive technology and AI crawlers identify the core content versus navigation/sidebar/footer.'
+    ),
     raw: { hasMain }
   };
 }
@@ -1706,10 +1883,18 @@ function checkHeadingHierarchySequential(headingInfo) {
   const status = headingInfo.skippedLevel ? 'WARNING' : 'PASS';
   return {
     id: 'heading-hierarchy',
-    title: 'Heading hierarchy (sequential order)',
+    title: t('Jerarquía de encabezados (orden secuencial)', 'Heading hierarchy (sequential order)'),
     status,
-    detail: headingInfo.skippedLevel ? 'One or more heading levels are skipped when descending the outline (e.g. H1 straight to H3, with no H2 between).' : 'Heading levels descend sequentially with no skips.',
-    howToFix: headingInfo.skippedLevel ? 'Headings should descend one level at a time (H1 → H2 → H3), even if visually you want smaller text — use CSS for visual size, not heading level, to indicate structure to crawlers and assistive tech.' : undefined,
+    detail: headingInfo.skippedLevel
+      ? t(
+          'Se omiten uno o más niveles de encabezado al descender el esquema (por ejemplo, de H1 directamente a H3, sin H2 intermedio).',
+          'One or more heading levels are skipped when descending the outline (e.g. H1 straight to H3, with no H2 between).'
+        )
+      : t('Los niveles de encabezado descienden de forma secuencial, sin saltos.', 'Heading levels descend sequentially with no skips.'),
+    howToFix: headingInfo.skippedLevel ? t(
+      'Los encabezados deben descender de nivel en nivel (H1 → H2 → H3), aunque visualmente quieras un texto más pequeño. Usa CSS para el tamaño y reserva el nivel del encabezado para indicar la estructura a rastreadores y tecnologías de apoyo.',
+      'Headings should descend one level at a time (H1 → H2 → H3), even if visually you want smaller text — use CSS for visual size, not heading level, to indicate structure to crawlers and assistive tech.'
+    ) : undefined,
     raw: { headings: headingInfo.headings }
   };
 }
@@ -1735,10 +1920,20 @@ function checkFormLabels($) {
   const status = unlabeled.length === 0 ? 'PASS' : 'FAIL';
   return {
     id: 'form-labels',
-    title: 'Form label association',
+    title: t('Asociación de etiquetas en formularios', 'Form label association'),
     status,
-    detail: total === 0 ? 'No form fields on this page.' : unlabeled.length === 0 ? `All ${total} form field(s) have an associated label.` : `${unlabeled.length}/${total} form field(s) missing a label: ${unlabeled.map(u => u.name || u.id || u.type || u.tag).join(', ')}.`,
-    howToFix: unlabeled.length === 0 ? undefined : 'Add a <label for="[id]"> matching each form field\'s id, or an aria-label attribute directly on the field. Unlabeled form fields are invisible to screen readers and likely poorly understood by AI agents trying to interact with the page.',
+    detail: total === 0
+      ? t('Esta página no tiene campos de formulario.', 'No form fields on this page.')
+      : unlabeled.length === 0
+        ? t(`Los ${total} campo(s) del formulario tienen una etiqueta asociada.`, `All ${total} form field(s) have an associated label.`)
+        : t(
+            `${unlabeled.length} de ${total} campo(s) del formulario no tienen etiqueta: ${unlabeled.map(u => u.name || u.id || u.type || u.tag).join(', ')}.`,
+            `${unlabeled.length}/${total} form field(s) missing a label: ${unlabeled.map(u => u.name || u.id || u.type || u.tag).join(', ')}.`
+          ),
+    howToFix: unlabeled.length === 0 ? undefined : t(
+      'Añade una <label for="[id]"> que coincida con el id de cada campo, o un atributo aria-label directamente en el campo. Los campos sin etiqueta son invisibles para los lectores de pantalla y difíciles de interpretar para un agente de IA que intente rellenar el formulario.',
+      'Add a <label for="[id]"> matching each form field\'s id, or an aria-label attribute directly on the field. Unlabeled form fields are invisible to screen readers and likely poorly understood by AI agents trying to interact with the page.'
+    ),
     raw: { total, unlabeled }
   };
 }
@@ -1754,10 +1949,16 @@ function computeAccessibilityTreeHealth(mainCheck, headingSeqCheck, formCheck, i
   const status = score >= 80 ? 'PASS' : score >= 50 ? 'WARNING' : 'FAIL';
   return {
     id: 'a11y-tree-health',
-    title: 'Accessibility Tree Health (composite estimate)',
+    title: t('Salud del árbol de accesibilidad (estimación compuesta)', 'Accessibility Tree Health (composite estimate)'),
     status,
-    detail: `Composite estimate: ${score}/100, based on main-landmark presence, heading hierarchy, form labeling, and image alt coverage. Based on structural signals from static HTML only — for Chrome's full accessibility tree audit, cross-check with Google PageSpeed Insights.`,
-    howToFix: status === 'PASS' ? undefined : 'Address the individual checks above (main landmark, heading hierarchy, form labels, image alt text) — this composite score moves as those improve.',
+    detail: t(
+      `Estimación compuesta: ${score}/100, a partir de la presencia de la región <main>, la jerarquía de encabezados, el etiquetado de formularios y la cobertura de texto alternativo. Se basa solo en señales estructurales del HTML estático; para la auditoría completa del árbol de accesibilidad de Chrome, contrasta con Google PageSpeed Insights.`,
+      `Composite estimate: ${score}/100, based on main-landmark presence, heading hierarchy, form labeling, and image alt coverage. Based on structural signals from static HTML only — for Chrome's full accessibility tree audit, cross-check with Google PageSpeed Insights.`
+    ),
+    howToFix: status === 'PASS' ? undefined : t(
+      'Resuelve las comprobaciones individuales anteriores (región <main>, jerarquía de encabezados, etiquetas de formulario y texto alternativo): esta puntuación compuesta sube a medida que mejoran.',
+      'Address the individual checks above (main landmark, heading hierarchy, form labels, image alt text) — this composite score moves as those improve.'
+    ),
     raw: { score }
   };
 }
