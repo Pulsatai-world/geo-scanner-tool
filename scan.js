@@ -21,6 +21,7 @@
 //   node scan.js <url> --max-pages 30           (page budget; default 20, max 50)
 //   node scan.js <url> --save                   (record a snapshot, show the change since last)
 //   node scan.js <url> --vs a.com,b.com         (benchmark against competitors)
+//   node scan.js <url> --lang en                (output language; default es)
 //
 // Two report styles are available. The default matches the hosted tool exactly, because it
 // renders the result through index.html itself rather than imitating it. --style report uses the
@@ -31,6 +32,7 @@ import { buildReportHtml } from './lib/report.js';
 import { buildWebStyleHtml } from './lib/web-report.js';
 import { saveSnapshot, previousSnapshot, snapshot, diff } from './lib/history.js';
 import { benchmark } from './lib/benchmark.js';
+import { pick, DEFAULT_LOCALE, LOCALES } from './netlify/functions/lib/i18n.js';
 import { dirname, resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { writeFileSync } from 'node:fs';
@@ -62,6 +64,12 @@ const CHROME_PATHS = [
   '/usr/bin/google-chrome'
 ];
 
+// The scan result carries both languages; this only decides what gets printed and written.
+const LANG = (() => {
+  const v = String(flag('lang') || DEFAULT_LOCALE).toLowerCase();
+  return LOCALES.includes(v) ? v : DEFAULT_LOCALE;
+})();
+const L = v => pick(v, LANG);
 const pad = (s, n) => String(s).padEnd(n);
 const STATUS_MARK = { PASS: 'ok  ', WARNING: 'warn', FAIL: 'FAIL', INCONCLUSIVE: '  ? ', INFO: 'info' };
 
@@ -81,32 +89,34 @@ const STATUS_MARK = { PASS: 'ok  ', WARNING: 'warn', FAIL: 'FAIL', INCONCLUSIVE:
   const elapsed = ((Date.now() - started) / 1000).toFixed(1);
 
   if (!result.reachable) {
-    console.log('SITE NOT REACHABLE from this machine either.');
+    console.log(LANG === 'es' ? 'EL SITIO TAMPOCO ES ACCESIBLE desde este equipo.' : 'SITE NOT REACHABLE from this machine either.');
     const reach = result.section1.checks.find(c => c.id === 'site-reachability');
     if (reach) {
-      console.log('\n' + reach.detail);
-      if (reach.howToFix) console.log('\nWhat to do: ' + reach.howToFix);
+      console.log('\n' + L(reach.detail));
+      if (reach.howToFix) console.log('\n' + (LANG === 'es' ? 'Qué hacer: ' : 'What to do: ') + L(reach.howToFix));
     }
     console.log(`\nNo score is reported — nothing was measured. (${elapsed}s)\n`);
   } else {
     const s = result.score;
-    console.log(`ON-PAGE GEO READINESS: ${s.overall}/100`);
-    (result.layers || []).forEach(l => console.log(`  ${l.title.padEnd(34)} ${l.score === null ? ' —' : String(l.score).padStart(3)}${l.scored ? '' : '   (not in score)'}`));
-    console.log(`  ${result.scanQuality.pagesAnalyzed} page(s) analysed · ${s.blockers.count} blocker(s) · ${s.unverified.count} unverified · ${elapsed}s\n`);
+    console.log(LANG === 'es' ? `PREPARACIÓN GEO EN PÁGINA: ${s.overall}/100` : `ON-PAGE GEO READINESS: ${s.overall}/100`);
+    (result.layers || []).forEach(l => console.log(`  ${pad(L(l.title), 34)} ${l.score === null ? ' —' : String(l.score).padStart(3)}${l.scored ? '' : (LANG === 'es' ? '   (no puntúa)' : '   (not in score)')}`));
+    console.log(LANG === 'es'
+      ? `  ${result.scanQuality.pagesAnalyzed} página(s) analizada(s) · ${s.blockers.count} bloqueo(s) · ${s.unverified.count} sin verificar · ${elapsed}s\n`
+      : `  ${result.scanQuality.pagesAnalyzed} page(s) analysed · ${s.blockers.count} blocker(s) · ${s.unverified.count} unverified · ${elapsed}s\n`);
 
-    console.log('CRAWLABILITY');
-    for (const c of result.section1.checks) console.log(`  [${STATUS_MARK[c.status] || c.status}] ${c.title}`);
+    console.log(LANG === 'es' ? 'ACCESO Y RASTREO' : 'CRAWLABILITY');
+    for (const c of result.section1.checks) console.log(`  [${STATUS_MARK[c.status] || c.status}] ${L(c.title)}`);
 
     const actionable = result.prioritizedFindings.filter(f => f.priority !== 'unverified');
     if (actionable.length) {
       console.log(`\nFINDINGS (${actionable.length})`);
-      for (const f of actionable) console.log(`  [${STATUS_MARK[f.status] || ''}] ${pad(f.section, 34)} ${f.title}`);
+      for (const f of actionable) console.log(`  [${STATUS_MARK[f.status] || ''}] ${pad(L(f.section), 34)} ${L(f.title)}`);
     }
 
     const unver = result.prioritizedFindings.filter(f => f.priority === 'unverified');
     if (unver.length) {
       console.log(`\nNEEDS MANUAL VERIFICATION (${unver.length}) — not client findings`);
-      for (const f of unver) console.log(`  - ${f.title}`);
+      for (const f of unver) console.log(`  - ${L(f.title)}`);
     }
     console.log('');
   }
@@ -174,8 +184,8 @@ const STATUS_MARK = { PASS: 'ok  ', WARNING: 'warn', FAIL: 'FAIL', INCONCLUSIVE:
     const style = flag('style');
     const repoRoot = dirname(fileURLToPath(import.meta.url));
     const markup = style === 'report'
-      ? buildReportHtml(result)
-      : buildWebStyleHtml(result, repoRoot);
+      ? buildReportHtml(result, LANG)
+      : buildWebStyleHtml(result, repoRoot, LANG);
     writeFileSync(htmlPath, markup);
     console.log('HTML written:  ' + htmlPath);
 

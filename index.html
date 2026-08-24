@@ -33,6 +33,13 @@
   h1.pagetitle{font-family:var(--font-display);font-weight:700;font-size:30px;margin:8px 0 6px;position:relative;z-index:1}
   .sub{color:#c9c2e8;font-size:15px;line-height:1.5;max-width:680px;position:relative;z-index:1}
 
+  /* ── language toggle ── */
+  .lang-toggle{position:relative;z-index:2;display:inline-flex;border:1px solid rgba(255,255,255,.25);border-radius:var(--radius-pill);overflow:hidden;flex:none}
+  .lang-btn{font-family:var(--font-body);font-size:11.5px;font-weight:700;letter-spacing:.06em;padding:7px 15px;border:none;background:transparent;color:#c9c2e8;cursor:pointer;transition:background .12s,color .12s}
+  .lang-btn:hover{color:#fff}
+  .lang-btn.active{background:var(--violet-600);color:#fff}
+  .lang-btn:focus-visible{outline:2px solid var(--emerald-500);outline-offset:-2px}
+
   /* ── layout ── */
   .wrap{max-width:1040px;margin:0 auto;padding:28px 24px 0}
   .card{background:#fff;border:1px solid var(--line);border-radius:var(--radius-lg);padding:24px;margin-bottom:20px;box-shadow:var(--shadow-sm)}
@@ -191,10 +198,16 @@
       <span class="logo-divider"></span>
       <div class="logo-sub">GEO On-Page Scanner</div>
     </div>
+    <!-- Spanish is the default. The scan result carries both languages, so switching re-renders
+         from memory and never triggers another request to the scanned site. -->
+    <div class="lang-toggle no-print" role="group" aria-label="Idioma / Language">
+      <button type="button" class="lang-btn active" data-lang="es" onclick="setLang('es')">ES</button>
+      <button type="button" class="lang-btn" data-lang="en" onclick="setLang('en')">EN</button>
+    </div>
   </div>
   <div class="eyebrow">Akore Labs · GEO Technical Readiness</div>
-  <h1 class="pagetitle">Can AI engines find, read and cite this site?</h1>
-  <div class="sub">33 checks in three layers: whether AI systems can reach the site, whether a machine can parse it, and whether there is enough substance and authority to be worth citing. Every verdict follows a stated rule, so the same page always produces the same result.</div>
+  <h1 class="pagetitle" id="page-title">¿Pueden los motores de IA encontrar, leer y citar este sitio?</h1>
+  <div class="sub" id="page-sub">35 comprobaciones en tres capas: si los sistemas de IA pueden acceder al sitio, si una máquina puede interpretarlo, y si hay sustancia y autoridad suficientes para merecer una cita. Cada veredicto sigue una regla explícita, así que una misma página produce siempre el mismo resultado.</div>
 </div>
 
 <div class="wrap">
@@ -231,8 +244,8 @@
     </div>
 
     <div class="card">
-      <div class="card-title">Prioritized findings</div>
-      <div class="card-caption">Everything needing action, most severe first. Grouped by layer below, alongside who is able to fix each one.</div>
+      <div class="card-title" id="findings-title">Hallazgos priorizados</div>
+      <div class="card-caption" id="findings-caption">Todo lo que requiere acción, de mayor a menor gravedad. Más abajo aparece agrupado por capa, junto con quién puede resolver cada punto.</div>
       <div id="findings-list"></div>
     </div>
 
@@ -242,7 +255,7 @@
     <div id="layers"></div>
 
     <div class="card">
-      <div class="card-title">Key Page Discovery</div>
+      <div class="card-title" id="discovery-title">Detección de páginas clave</div>
       <div class="card-caption" id="discovery-caption">Automatically checked the site's nav, header, and footer for About, FAQ, Contact, Services, and Blog pages — About and FAQ are the two highest-impact page types for GEO. Anything found is added to the scan below automatically.</div>
       <div id="discovery-table"></div>
     </div>
@@ -376,7 +389,115 @@ function scoreClass(n) {
   return 'low';
 }
 
+// The scan result carries both languages. Switching therefore re-renders from what is already
+// in memory — it never rescans, so a client's server sees no extra traffic for a language toggle,
+// and a single scan can produce both a Spanish and an English report.
+var LANG = (function () {
+  try { return localStorage.getItem('geo_lang') || 'es'; } catch (e) { return 'es'; }
+})();
+var LAST_RESULT = null;
+
+// Mirrors pick() in the engine: bilingual objects resolve, plain strings pass through unchanged.
+function L(v) {
+  if (v == null) return v;
+  if (typeof v === 'string') return v;
+  if (typeof v === 'object' && (typeof v.es === 'string' || typeof v.en === 'string')) {
+    return v[LANG] != null ? v[LANG] : (v.es != null ? v.es : v.en);
+  }
+  return v;
+}
+
+var UI_TEXT = {
+  es: {
+    scoreTitle: 'Puntuación de preparación técnica GEO', strong: 'Buena preparación GEO en página',
+    emerging: 'Preparación GEO en página en desarrollo', low: 'Preparación GEO en página baja',
+    notScored: 'no puntúa', countsToward: 'cuenta para la puntuación', whoFixes: 'Quién puede resolverlo',
+    findings: 'Hallazgos priorizados',
+    findingsCaption: 'Todo lo que requiere acción, de mayor a menor gravedad. Más abajo aparece agrupado por capa, junto con quién puede resolver cada punto.',
+    howToFix: 'Cómo resolverlo', needsVer: 'Requiere verificación manual',
+    needsVerNote: 'El escáner no ha podido determinar estos puntos. Son cuestiones abiertas que debemos comprobar a mano, no problemas confirmados en el sitio.',
+    notClient: 'no son hallazgos para el cliente',
+    noIssues: 'Sin incidencias: todas las comprobaciones evaluables han pasado.',
+    noneEvaluated: 'Sin hallazgos. No se ha podido cargar el sitio, así que no se ha evaluado nada: consulta los puntos sin verificar más abajo.',
+    incomplete: 'Escaneo incompleto', unreachable: 'Sin puntuación: el escáner<br>no ha podido acceder al sitio',
+    unreachableNote: 'El escáner no ha podido cargar el sitio, así que no hay nada que puntuar. Esto <b>no</b> es un hallazgo sobre el sitio, que puede estar atendiendo visitas con normalidad. Consulta «Requiere verificación manual» más abajo.',
+    blockers: 'bloqueo(s) de rastreo — se listan aparte, no puntúan',
+    needVer: 'comprobación(es) requieren verificación manual',
+    scoreNote: 'Media de las dos capas puntuables, sobre {n} página(s). Dentro de cada capa todas las comprobaciones pesan igual. El Acceso se informa aparte porque depende del hosting y del CDN.',
+    toImprove: 'a mejorar', passing: 'correctas', failing: 'con fallo', unverified: 'sin verificar', info: 'informativas',
+    thCheck: 'Comprobación', thStatus: 'Estado', thDetail: 'Detalle', btnDetails: 'Detalles',
+    discovery: 'Detección de páginas clave',
+    ST: { PASS: 'CORRECTO', WARNING: 'AVISO', FAIL: 'FALLO', INCONCLUSIVE: 'SIN VERIFICAR', INFO: 'INFO' }
+  },
+  en: {
+    scoreTitle: 'GEO Technical Readiness Score', strong: 'Strong on-page GEO readiness',
+    emerging: 'Emerging on-page GEO readiness', low: 'Low on-page GEO readiness',
+    notScored: 'not in score', countsToward: 'counts toward score', whoFixes: 'Who fixes this',
+    findings: 'Prioritized findings',
+    findingsCaption: 'Everything needing action, most severe first. Grouped by layer below, alongside who is able to fix each one.',
+    howToFix: 'How to fix', needsVer: 'Needs manual verification',
+    needsVerNote: 'The scanner could not establish these. They are open questions for us to check, not problems confirmed on the site.',
+    notClient: 'not client-facing findings',
+    noIssues: 'No issues found — every check that could be evaluated passed.',
+    noneEvaluated: 'No findings. The site could not be loaded, so nothing was evaluated — see the unverified items below.',
+    incomplete: 'Scan incomplete', unreachable: 'No score — site not reachable<br>from the scanner',
+    unreachableNote: 'The scanner could not load this site, so there is nothing to score. This is <b>not</b> a finding about the site, which may be serving visitors normally. See "Needs manual verification" below.',
+    blockers: 'crawlability blocker(s) — listed separately, not scored',
+    needVer: 'check(s) need manual verification',
+    scoreNote: 'Mean of the two scored layers, across {n} page(s). Every check counts equally within its layer. Access is reported separately because it is hosting and CDN territory.',
+    toImprove: 'to improve', passing: 'passing', failing: 'failing', unverified: 'unverified', info: 'info',
+    thCheck: 'Check', thStatus: 'Status', thDetail: 'Detail', btnDetails: 'Details',
+    discovery: 'Key Page Discovery',
+    ST: { PASS: 'PASS', WARNING: 'WARNING', FAIL: 'FAIL', INCONCLUSIVE: 'UNVERIFIED', INFO: 'INFO' }
+  }
+};
+function U() { return UI_TEXT[LANG] || UI_TEXT.es; }
+
+function setLang(lang) {
+  LANG = lang;
+  try { localStorage.setItem('geo_lang', lang); } catch (e) { /* private mode — the toggle still works for this visit */ }
+  document.querySelectorAll('.lang-btn').forEach(function (b) {
+    b.classList.toggle('active', b.getAttribute('data-lang') === lang);
+  });
+  applyChrome();
+  if (LAST_RESULT) renderResults(LAST_RESULT);
+}
+
+// Static page text outside the rendered result. Kept here rather than in the HTML so a language
+// switch moves the whole page, not just the scan output.
+var CHROME = {
+  es: {
+    'page-title': '¿Pueden los motores de IA encontrar, leer y citar este sitio?',
+    'page-sub': '35 comprobaciones en tres capas: si los sistemas de IA pueden acceder al sitio, si una máquina puede interpretarlo, y si hay sustancia y autoridad suficientes para merecer una cita. Cada veredicto sigue una regla explícita, así que una misma página produce siempre el mismo resultado.',
+    'findings-title': 'Hallazgos priorizados',
+    'findings-caption': 'Todo lo que requiere acción, de mayor a menor gravedad. Más abajo aparece agrupado por capa, junto con quién puede resolver cada punto.',
+    'discovery-title': 'Detección de páginas clave'
+  },
+  en: {
+    'page-title': 'Can AI engines find, read and cite this site?',
+    'page-sub': '35 checks in three layers: whether AI systems can reach the site, whether a machine can parse it, and whether there is enough substance and authority to be worth citing. Every verdict follows a stated rule, so the same page always produces the same result.',
+    'findings-title': 'Prioritized findings',
+    'findings-caption': 'Everything needing action, most severe first. Grouped by layer below, alongside who is able to fix each one.',
+    'discovery-title': 'Key Page Discovery'
+  }
+};
+function applyChrome() {
+  var map = CHROME[LANG] || CHROME.es;
+  Object.keys(map).forEach(function (id) {
+    var el = document.getElementById(id);
+    if (el) el.textContent = map[id];
+  });
+  document.documentElement.setAttribute('lang', LANG);
+}
+document.addEventListener('DOMContentLoaded', function () {
+  document.querySelectorAll('.lang-btn').forEach(function (b) {
+    b.classList.toggle('active', b.getAttribute('data-lang') === LANG);
+  });
+  applyChrome();
+});
+
 function renderResults(data) {
+  LAST_RESULT = data;
   document.getElementById('results').style.display = 'block';
 
   const s = data.score;
@@ -388,25 +509,25 @@ function renderResults(data) {
     // client site — the one output this tool must never produce.
     document.getElementById('score-hero').innerHTML = `
       <div class="score-main">
-        <div class="score-eyebrow">Scan incomplete</div>
-        <div class="score-unreach">No score — site not reachable<br>from the scanner</div>
-        <div class="score-note">The scanner could not load this site, so there is nothing to score. This is <b>not</b> a finding about the site, which may be serving visitors normally. See "Needs manual verification" below for what was determined and what to check.</div>
+        <div class="score-eyebrow">${esc(U().incomplete)}</div>
+        <div class="score-unreach">${U().unreachable}</div>
+        <div class="score-note">${U().unreachableNote}</div>
       </div>`;
   } else {
-    const label = s.overall >= 70 ? 'Strong on-page GEO readiness' : s.overall >= 40 ? 'Emerging on-page GEO readiness' : 'Low on-page GEO readiness';
+    const label = s.overall >= 70 ? U().strong : s.overall >= 40 ? U().emerging : U().low;
     document.getElementById('score-hero').innerHTML = `
       <div class="score-main">
-        <div class="score-eyebrow">GEO Technical Readiness Score</div>
+        <div class="score-eyebrow">${esc(U().scoreTitle)}</div>
         <div class="score-figure"><span class="score-num ${scoreClass(s.overall)}">${s.overall}</span><span class="score-den">/ 100</span></div>
         <div class="score-label">${esc(label)}</div>
-        ${s.blockers.count ? `<div class="blocker-tag">${s.blockers.count} crawlability blocker${s.blockers.count === 1 ? '' : 's'} — listed separately, not scored</div>` : ''}
-        ${s.unverified.count ? `<div class="unverified-tag">${s.unverified.count} check${s.unverified.count === 1 ? '' : 's'} need manual verification</div>` : ''}
-        <div class="score-note">Mean of the two scored layers, across ${q.pagesAnalyzed || 0} page${q.pagesAnalyzed === 1 ? '' : 's'}. Every check counts equally within its layer. Access is reported separately because it is hosting and CDN territory, and folding it in would let infrastructure noise move a number meant to track the work.</div>
+        ${s.blockers.count ? `<div class="blocker-tag">${s.blockers.count} ${esc(U().blockers)}</div>` : ''}
+        ${s.unverified.count ? `<div class="unverified-tag">${s.unverified.count} ${esc(U().needVer)}</div>` : ''}
+        <div class="score-note">${esc(U().scoreNote.replace('{n}', q.pagesAnalyzed || 0))}</div>
       </div>
       <div class="score-subs">
         ${(data.layers || []).map(l => `
           <div class="score-sub">
-            <div class="sl">${esc(l.title.replace(/^Layer \d+ — /, ''))}${l.scored ? '' : '<br><span style="font-weight:500;text-transform:none;letter-spacing:0">(not in score)</span>'}</div>
+            <div class="sl">${esc(L(l.title).replace(/^(?:Layer|Capa) \d+ — /, ''))}${l.scored ? '' : `<br><span style="font-weight:500;text-transform:none;letter-spacing:0">(${esc(U().notScored)})</span>`}</div>
             <div class="sv">${l.score === null ? '—' : l.score}</div>
           </div>`).join('')}
       </div>`;
@@ -417,18 +538,18 @@ function renderResults(data) {
   const unverifiedFindings = data.prioritizedFindings.filter(f => f.priority === 'unverified');
   const renderFinding = f => `
       <div class="finding ${f.priority}">
-        <div class="finding-tag">${esc(f.section)}${f.status ? ' · ' + esc(f.status) : ''}</div>
-        <div class="finding-title">${esc(f.title)}</div>
-        <div class="finding-detail">${esc(f.detail)}</div>
+        <div class="finding-tag">${esc(L(f.section))}${f.status ? ' · ' + esc(U().ST[f.status] || f.status) : ''}</div>
+        <div class="finding-title">${esc(L(f.title))}</div>
+        <div class="finding-detail">${esc(L(f.detail))}</div>
         ${f.page ? `<div class="finding-page">${esc(f.page)}</div>` : ''}
-        ${f.howToFix ? `<div class="how-to-fix"><b>How to fix:</b> ${esc(f.howToFix)}</div>` : ''}
+        ${f.howToFix ? `<div class="how-to-fix"><b>${esc(U().howToFix)}:</b> ${esc(L(f.howToFix))}</div>` : ''}
       </div>`;
 
   let findingsHtml = '';
   if (!actionable.length) {
     findingsHtml += data.reachable
-      ? '<div class="empty">No issues found — every check that could be evaluated passed.</div>'
-      : '<div class="empty">No findings. The site could not be loaded, so nothing was evaluated — see the unverified items below.</div>';
+      ? `<div class="empty">${esc(U().noIssues)}</div>`
+      : `<div class="empty">${esc(U().noneEvaluated)}</div>`;
   } else {
     findingsHtml += actionable.map(renderFinding).join('');
   }
@@ -436,8 +557,8 @@ function renderResults(data) {
   // confirmed defects or handed to a client as remediation work.
   if (unverifiedFindings.length) {
     findingsHtml += `<div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--line)">
-      <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--ink-400);margin-bottom:4px">Needs manual verification — not client-facing findings</div>
-      <div style="font-size:12px;color:var(--ink-500);margin-bottom:10px;line-height:1.5">The scanner could not establish these. They are open questions for us to check, not problems confirmed on the site.</div>
+      <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--ink-400);margin-bottom:4px">${esc(U().needsVer)} — ${esc(U().notClient)}</div>
+      <div style="font-size:12px;color:var(--ink-500);margin-bottom:10px;line-height:1.5">${esc(U().needsVerNote)}</div>
       ${unverifiedFindings.map(renderFinding).join('')}
     </div>`;
   }
@@ -459,11 +580,11 @@ function renderLayers(data) {
   document.getElementById('layers').innerHTML = layers.map((layer, li) => {
     const c = layer.counts || {};
     const chips = [
-      c.FAIL ? `<span class="lchip lchip-FAIL">${c.FAIL} failing</span>` : '',
-      c.WARNING ? `<span class="lchip lchip-WARNING">${c.WARNING} to improve</span>` : '',
-      c.PASS ? `<span class="lchip lchip-PASS">${c.PASS} passing</span>` : '',
-      c.INCONCLUSIVE ? `<span class="lchip lchip-INCONCLUSIVE">${c.INCONCLUSIVE} unverified</span>` : '',
-      c.INFO ? `<span class="lchip lchip-INFO">${c.INFO} info</span>` : ''
+      c.FAIL ? `<span class="lchip lchip-FAIL">${c.FAIL} ${esc(U().failing)}</span>` : '',
+      c.WARNING ? `<span class="lchip lchip-WARNING">${c.WARNING} ${esc(U().toImprove)}</span>` : '',
+      c.PASS ? `<span class="lchip lchip-PASS">${c.PASS} ${esc(U().passing)}</span>` : '',
+      c.INCONCLUSIVE ? `<span class="lchip lchip-INCONCLUSIVE">${c.INCONCLUSIVE} ${esc(U().unverified)}</span>` : '',
+      c.INFO ? `<span class="lchip lchip-INFO">${c.INFO} ${esc(U().info)}</span>` : ''
     ].filter(Boolean).join('');
 
     // Checks that ran once for the whole site are listed plainly; those that ran per page are
@@ -481,17 +602,17 @@ function renderLayers(data) {
       <div class="card layer-card">
         <div class="layer-head">
           <div>
-            <div class="card-title">${esc(layer.title)}</div>
-            <div class="layer-q">${esc(layer.question)}</div>
+            <div class="card-title">${esc(L(layer.title))}</div>
+            <div class="layer-q">${esc(L(layer.question))}</div>
           </div>
           <div class="layer-score">
             <div class="ls-num">${layer.score === null ? '—' : layer.score}</div>
-            <div class="ls-lbl">${layer.scored ? 'counts toward score' : 'not in score'}</div>
+            <div class="ls-lbl">${esc(layer.scored ? U().countsToward : U().notScored)}</div>
           </div>
         </div>
-        <div class="card-caption">${esc(layer.summary)}</div>
-        <div class="layer-owner"><b>Who fixes this:</b> ${esc(layer.owner)}</div>
-        ${layer.scoringNote ? `<div class="layer-note">${esc(layer.scoringNote)}</div>` : ''}
+        <div class="card-caption">${esc(L(layer.summary))}</div>
+        <div class="layer-owner"><b>${esc(U().whoFixes)}:</b> ${esc(L(layer.owner))}</div>
+        ${layer.scoringNote ? `<div class="layer-note">${esc(L(layer.scoringNote))}</div>` : ''}
         <div class="lchips">${chips}</div>
         ${siteChecks.length ? renderChecksTable(siteChecks, 'L' + li + 's') : ''}
         ${perPage}
@@ -504,13 +625,13 @@ function shortUrl(u) {
 }
 
 function renderChecksTable(checks, prefix) {
-  return `<table class="checks"><thead><tr><th>Check</th><th>Status</th><th>Detail</th><th></th></tr></thead><tbody>
+  return `<table class="checks"><thead><tr><th>${esc(U().thCheck)}</th><th>${esc(U().thStatus)}</th><th>${esc(U().thDetail)}</th><th></th></tr></thead><tbody>
     ${checks.map((c, i) => `
       <tr>
-        <td class="chk-title">${esc(c.title)}</td>
-        <td><span class="badge badge-${c.status}">${c.status}</span></td>
-        <td>${esc(c.detail)}${c.howToFix ? `<div class="how-to-fix"><b>How to fix:</b> ${esc(c.howToFix)}</div>` : ''}</td>
-        <td><button class="chk-toggle no-print" onclick="toggleRaw('${prefix}-${i}')">Details</button></td>
+        <td class="chk-title">${esc(L(c.title))}</td>
+        <td><span class="badge badge-${c.status}">${esc(U().ST[c.status] || c.status)}</span></td>
+        <td>${esc(L(c.detail))}${c.howToFix ? `<div class="how-to-fix"><b>${esc(U().howToFix)}:</b> ${esc(L(c.howToFix))}</div>` : ''}</td>
+        <td><button class="chk-toggle no-print" onclick="toggleRaw('${prefix}-${i}')">${esc(U().btnDetails)}</button></td>
       </tr>
       <tr><td colspan="4" style="padding:0;border:none;"><pre class="chk-raw" id="raw-${prefix}-${i}">${esc(JSON.stringify(c.raw, null, 2))}</pre></td></tr>
     `).join('')}

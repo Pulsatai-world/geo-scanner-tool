@@ -1,3 +1,5 @@
+import { t } from './i18n.js';
+
 // ── The check registry ──
 //
 // Single source of truth for what this scanner tests, how each verdict is decided, and why the
@@ -17,29 +19,44 @@ export const LAYERS = {
   access: {
     id: 'access',
     order: 1,
-    title: 'Layer 1 — Access',
-    question: 'Can AI systems reach this site at all?',
-    summary: 'Whether crawlers and retrieval bots can fetch the site, and whether anything blocks, redirects or rate-limits them. Nothing downstream matters if this fails.',
-    owner: 'Hosting, DNS and CDN — usually the host or platform, not the web team.',
+    title: t('Capa 1 — Acceso', 'Layer 1 — Access'),
+    question: t('¿Pueden los sistemas de IA acceder al sitio?', 'Can AI systems reach this site at all?'),
+    summary: t(
+      'Si los rastreadores y los bots de recuperación pueden descargar el sitio, y si algo los bloquea, los redirige o les limita la frecuencia. Si esto falla, nada de lo que viene después importa.',
+      'Whether crawlers and retrieval bots can fetch the site, and whether anything blocks, redirects or rate-limits them. Nothing downstream matters if this fails.'
+    ),
+    owner: t(
+      'Hosting, DNS y CDN: normalmente el proveedor de alojamiento o la plataforma, no el equipo web.',
+      'Hosting, DNS and CDN — usually the host or platform, not the web team.'
+    ),
     scored: false,
-    scoringNote: 'Reported as blockers rather than folded into the score. It is largely outside the site owner\'s control, it is the least reliable thing to measure remotely, and letting it move the score would mean infrastructure noise masquerading as content progress.'
+    scoringNote: t(
+      'Se informa como bloqueos, no se integra en la puntuación. Queda en gran medida fuera del control del propietario, es lo menos fiable de medir en remoto, y dejar que mueva la cifra significaría que el ruido de infraestructura se hace pasar por avance de contenido.',
+      'Reported as blockers rather than folded into the score. It is largely outside the site owner\'s control, it is the least reliable thing to measure remotely, and letting it move the score would mean infrastructure noise masquerading as content progress.'
+    )
   },
   readability: {
     id: 'readability',
     order: 2,
-    title: 'Layer 2 — Machine readability',
-    question: 'Can a machine parse the page and understand its structure?',
-    summary: 'Whether the content exists in the HTML without JavaScript, and whether titles, metadata, structured data, headings and landmarks describe it in a form a machine can interpret.',
-    owner: 'Developer or CMS.',
+    title: t('Capa 2 — Legibilidad por máquina', 'Layer 2 — Machine readability'),
+    question: t('¿Puede una máquina interpretar la página y entender su estructura?', 'Can a machine parse the page and understand its structure?'),
+    summary: t(
+      'Si el contenido existe en el HTML sin necesidad de JavaScript, y si los títulos, los metadatos, los datos estructurados, los encabezados y las regiones lo describen en un formato que una máquina pueda interpretar.',
+      'Whether the content exists in the HTML without JavaScript, and whether titles, metadata, structured data, headings and landmarks describe it in a form a machine can interpret.'
+    ),
+    owner: t('Desarrollo o el propio CMS.', 'Developer or CMS.'),
     scored: true
   },
   substance: {
     id: 'substance',
     order: 3,
-    title: 'Layer 3 — Substance & authority',
-    question: 'Is there anything here worth citing, and any reason to trust it?',
-    summary: 'Whether the page carries enough specific, well-scoped content to be quoted, and whether it demonstrates a real, accountable organisation behind it. A page can pass every technical check and still never be cited because there is nothing in it to quote.',
-    owner: 'Content and marketing.',
+    title: t('Capa 3 — Sustancia y autoridad', 'Layer 3 — Substance & authority'),
+    question: t('¿Hay aquí algo que merezca ser citado, y alguna razón para confiar en ello?', 'Is there anything here worth citing, and any reason to trust it?'),
+    summary: t(
+      'Si la página tiene contenido suficientemente concreto y bien delimitado como para ser citada, y si demuestra que detrás hay una organización real y responsable. Una página puede superar todas las comprobaciones técnicas y aun así no citarse nunca, sencillamente porque no hay nada que citar.',
+      'Whether the page carries enough specific, well-scoped content to be quoted, and whether it demonstrates a real, accountable organisation behind it. A page can pass every technical check and still never be cited because there is nothing in it to quote.'
+    ),
+    owner: t('Contenido y marketing.', 'Content and marketing.'),
     scored: true
   }
 };
