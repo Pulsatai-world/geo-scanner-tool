@@ -737,6 +737,68 @@ function checkEdgeProtection(headers, platform) {
   };
 }
 
+// ── Sitemap-driven crawling ──
+// Nav-based discovery finds the handful of pages a site links from its header and footer, which
+// on a forty-page site means the score describes its front door rather than the site. The sitemap
+// is the site's own declaration of what it contains, so it is the right source for a
+// representative sample.
+//
+// Two safeguards. The page budget is capped, because a scan is a diagnostic and must not behave
+// like a crawler — at two concurrent requests a twenty-page scan is already a minute of a client's
+// server time. And the sample is spread evenly across the sitemap rather than taken from the top,
+// since sitemaps are usually ordered by date or by section and the first twenty entries would
+// otherwise all come from the same corner of the site.
+
+const DEFAULT_MAX_PAGES = 20;
+const MAX_SUBSITEMAPS = 5;
+
+function extractLocs(xml) {
+  return [...xml.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/gi)].map(m => m[1]);
+}
+
+// Follows a sitemap index one level down, which is as deep as real sitemaps go in practice.
+async function collectSitemapUrls(sitemapUrl, origin, limit) {
+  const res = await fetchSafe(sitemapUrl, USER_AGENTS.browser.ua);
+  if (!res.ok || res.status >= 400) return [];
+
+  if (/<sitemapindex/i.test(res.text)) {
+    const children = extractLocs(res.text).slice(0, MAX_SUBSITEMAPS);
+    const pages = [];
+    const fetched = await mapLimited(children, async u => fetchSafe(u, USER_AGENTS.browser.ua));
+    fetched.forEach(r => { if (r.ok && r.status < 400) pages.push(...extractLocs(r.text)); });
+    return dedupeSameOrigin(pages, origin, limit);
+  }
+  return dedupeSameOrigin(extractLocs(res.text), origin, limit);
+}
+
+function dedupeSameOrigin(urls, origin, limit) {
+  const seen = new Set();
+  const out = [];
+  for (const raw of urls) {
+    let u;
+    try { u = new URL(raw, origin); } catch { continue; }
+    if (!/^https?:$/.test(u.protocol)) continue;
+    // Same registrable host only — sitemaps occasionally list other properties.
+    if (u.hostname.replace(/^www\./, '') !== new URL(origin).hostname.replace(/^www\./, '')) continue;
+    u.hash = '';
+    const key = normalizeUrlForCompare(u.href);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(u.href);
+  }
+  return typeof limit === 'number' ? out.slice(0, limit) : out;
+}
+
+// Even spread rather than the first N, so a date-ordered sitemap does not yield twenty pages all
+// from the same month.
+function sampleEvenly(urls, n) {
+  if (urls.length <= n) return urls;
+  const step = urls.length / n;
+  const picked = [];
+  for (let i = 0; i < n; i++) picked.push(urls[Math.floor(i * step)]);
+  return [...new Set(picked)];
+}
+
 // ── Key Page Discovery ──
 // Before the per-page checks run, parse the homepage's nav/header/footer links for the handful
 // of page types our own methodology treats as highest-impact for GEO (About and FAQ especially).
@@ -1086,6 +1148,180 @@ function checkJsRendering($, mainText, html) {
   };
 }
 
+// ── Page type ──
+// A contact page is meant to be short. Judging one on word count produced a FAIL on a 16-word
+// /contacto/ page that was doing its job perfectly — advice that would have gone to a client as
+// "add 300 words to your contact page", and the kind of visibly wrong finding that makes someone
+// distrust the other thirty-two checks. Depth and scope expectations now depend on what kind of
+// page is being looked at.
+//
+// Patterns are bilingual for the same reason the authority checks are: these are Spanish-language
+// client sites, and an English-only matcher would classify every page as generic content.
+const PAGE_TYPES = {
+  contact: { label: 'Contact', judgeDepth: false, patterns: /(^|\/)(contact|contacto|contactanos|cont[áa]ctanos|contact-us|get-in-touch)(\/|$|\.)/i },
+  legal: { label: 'Legal / policy', judgeDepth: false, patterns: /(^|\/)(privacy|privacidad|terms|terminos|t[ée]rminos|aviso-legal|legal|cookies|politica|pol[íi]tica|disclaimer)(\/|$|\.|-)/i },
+  utility: { label: 'Utility', judgeDepth: false, patterns: /(^|\/)(thank-you|gracias|404|search|buscar|cart|carrito|checkout|login|acceder|sitemap)(\/|$|\.)/i },
+  home: { label: 'Homepage', judgeDepth: true, patterns: null },
+  content: { label: 'Content', judgeDepth: true, patterns: null }
+};
+
+function detectPageType(pageUrl) {
+  let path = '/';
+  try { path = new URL(pageUrl).pathname; } catch { /* keep default */ }
+  if (path === '/' || path === '') return { id: 'home', ...PAGE_TYPES.home };
+  for (const [id, cfg] of Object.entries(PAGE_TYPES)) {
+    if (cfg.patterns && cfg.patterns.test(path)) return { id, ...cfg };
+  }
+  return { id: 'content', ...PAGE_TYPES.content };
+}
+
+// ── Schema completeness ──
+// Checking that Organization exists says nothing about whether it is usable. A block carrying
+// only @type and a name gives an engine nothing to tie the business to, and it passed the
+// presence check exactly as a complete one did. Required properties are the ones without which
+// the type cannot function; recommended are those that materially help entity recognition.
+const SCHEMA_REQUIREMENTS = {
+  Organization: { required: ['name', 'url'], recommended: ['logo', 'sameAs', 'description', 'address'] },
+  LocalBusiness: { required: ['name', 'address'], recommended: ['telephone', 'openingHours', 'geo', 'priceRange', 'sameAs'] },
+  WebSite: { required: ['name', 'url'], recommended: ['publisher'] },
+  Article: { required: ['headline'], recommended: ['author', 'datePublished', 'dateModified', 'image', 'publisher'] },
+  BlogPosting: { required: ['headline'], recommended: ['author', 'datePublished', 'dateModified', 'image'] },
+  Product: { required: ['name'], recommended: ['image', 'description', 'offers', 'brand', 'aggregateRating'] },
+  Service: { required: ['name'], recommended: ['provider', 'areaServed', 'description', 'serviceType'] },
+  FAQPage: { required: ['mainEntity'], recommended: [] },
+  BreadcrumbList: { required: ['itemListElement'], recommended: [] },
+  Person: { required: ['name'], recommended: ['jobTitle', 'sameAs', 'worksFor'] }
+};
+
+// Walks every JSON-LD node and returns the property keys actually present for each @type found.
+function collectSchemaNodes($) {
+  const found = {};
+  const visit = node => {
+    if (Array.isArray(node)) { node.forEach(visit); return; }
+    if (!node || typeof node !== 'object') return;
+    const types = node['@type'] ? (Array.isArray(node['@type']) ? node['@type'] : [node['@type']]) : [];
+    types.forEach(t => {
+      const key = String(t);
+      const present = Object.keys(node).filter(k => {
+        if (k.startsWith('@')) return false;
+        const v = node[k];
+        if (v == null) return false;
+        if (typeof v === 'string') return v.trim().length > 0;
+        if (Array.isArray(v)) return v.length > 0;
+        return true;
+      });
+      found[key] = found[key] ? [...new Set([...found[key], ...present])] : present;
+    });
+    Object.values(node).forEach(v => { if (v && typeof v === 'object') visit(v); });
+  };
+  $('script[type="application/ld+json"]').each((_, el) => {
+    try { visit(JSON.parse($(el).contents().text())); } catch { /* malformed block — the presence check already reports this */ }
+  });
+  return found;
+}
+
+function checkSchemaCompleteness($) {
+  const nodes = collectSchemaNodes($);
+  const known = Object.keys(nodes).filter(t => SCHEMA_REQUIREMENTS[t]);
+  if (!known.length) return null; // no recognised types — the presence check covers that case
+
+  const assessed = known.map(type => {
+    const spec = SCHEMA_REQUIREMENTS[type];
+    const present = nodes[type];
+    return {
+      type,
+      missingRequired: spec.required.filter(p => !present.includes(p)),
+      missingRecommended: spec.recommended.filter(p => !present.includes(p))
+    };
+  });
+
+  const broken = assessed.filter(a => a.missingRequired.length);
+  const thin = assessed.filter(a => !a.missingRequired.length && a.missingRecommended.length > Math.max(1, Math.floor((SCHEMA_REQUIREMENTS[a.type].recommended.length || 1) * 0.6)));
+
+  if (broken.length) {
+    return {
+      id: 'schema-completeness',
+      title: 'Structured data completeness',
+      status: 'FAIL',
+      detail: `Structured data is present but incomplete: ${broken.map(b => `${b.type} is missing ${b.missingRequired.join(', ')}`).join('; ')}. A type missing its required properties cannot be interpreted, so it delivers nothing despite being on the page.`,
+      howToFix: `Add the missing required properties: ${broken.map(b => `${b.type} needs ${b.missingRequired.join(', ')}`).join('; ')}. Validate the result with Google's Rich Results Test or schema.org's validator before considering it done.`,
+      raw: { assessed }
+    };
+  }
+  if (thin.length) {
+    return {
+      id: 'schema-completeness',
+      title: 'Structured data completeness',
+      status: 'WARNING',
+      detail: `Structured data is valid but sparse: ${thin.map(t => `${t.type} omits ${t.missingRecommended.join(', ')}`).join('; ')}. These are the properties that connect the markup to a recognisable real-world entity.`,
+      howToFix: `Fill in the missing properties where they apply: ${thin.map(t => `${t.type} → ${t.missingRecommended.join(', ')}`).join('; ')}. sameAs is the highest-value of these — it links the entity to profiles engines already trust.`,
+      raw: { assessed }
+    };
+  }
+  return {
+    id: 'schema-completeness',
+    title: 'Structured data completeness',
+    status: 'PASS',
+    detail: `${known.length} structured data type(s) checked (${known.join(', ')}) — all required properties present and reasonably complete.`,
+    raw: { assessed }
+  };
+}
+
+// ── Freshness ──
+// Engines weight recency, and a page carrying no date at all cannot be assessed for it — which
+// is itself a disadvantage against a competitor whose page is visibly current.
+function checkFreshness($, mainText) {
+  const dates = [];
+  const pushDate = v => {
+    if (typeof v !== 'string') return;
+    const d = new Date(v);
+    if (!isNaN(d.getTime()) && d.getFullYear() > 1990 && d.getTime() <= Date.now() + 86400000) dates.push({ value: v, ts: d.getTime() });
+  };
+
+  $('script[type="application/ld+json"]').each((_, el) => {
+    try {
+      const visit = n => {
+        if (Array.isArray(n)) { n.forEach(visit); return; }
+        if (!n || typeof n !== 'object') return;
+        ['dateModified', 'datePublished', 'uploadDate'].forEach(k => pushDate(n[k]));
+        Object.values(n).forEach(v => { if (v && typeof v === 'object') visit(v); });
+      };
+      visit(JSON.parse($(el).contents().text()));
+    } catch { /* ignore */ }
+  });
+
+  $('time[datetime]').each((_, el) => pushDate($(el).attr('datetime')));
+  const metaDate = $('meta[property="article:modified_time"], meta[property="article:published_time"]').attr('content');
+  if (metaDate) pushDate(metaDate);
+
+  const hasVisibleYear = /\b20[12]\d\b/.test(mainText.slice(0, 4000));
+
+  if (!dates.length) {
+    return {
+      id: 'content-freshness',
+      title: 'Freshness signals',
+      status: 'WARNING',
+      detail: `No machine-readable date found — no dateModified or datePublished in structured data, no <time> element, no article date metadata.${hasVisibleYear ? ' A year appears in the visible text, but not in a form a machine can read as a date.' : ''} The page's recency cannot be established, which puts it behind a competitor whose page is visibly current.`,
+      howToFix: 'Add dateModified (and datePublished where it applies) to the page\'s structured data, and mark visible dates up with a <time datetime="…"> element. Keep dateModified genuinely accurate — a date that never changes is worse than none, and one that changes without the content changing is worse still.',
+      raw: { datesFound: 0, hasVisibleYear }
+    };
+  }
+
+  const newest = Math.max(...dates.map(d => d.ts));
+  const ageDays = Math.round((Date.now() - newest) / 86400000);
+  const status = ageDays <= 365 ? 'PASS' : 'WARNING';
+  return {
+    id: 'content-freshness',
+    title: 'Freshness signals',
+    status,
+    detail: status === 'PASS'
+      ? `Most recent machine-readable date is ${ageDays} day(s) old — the page declares its recency in a form engines can read.`
+      : `The most recent machine-readable date is ${ageDays} day(s) old (roughly ${Math.round(ageDays / 365)} year(s)). The markup is correct, but the content itself reads as stale.`,
+    howToFix: status === 'PASS' ? undefined : 'Review and genuinely update the content, then set dateModified to the real revision date. Refreshing the date without touching the content is detectable and counter-productive.',
+    raw: { datesFound: dates.length, newestAgeDays: ageDays, newest: new Date(newest).toISOString().slice(0, 10) }
+  };
+}
+
 // ── Content depth, page scope, and authority ──
 //
 // These four checks exist to answer the questions an analyst would otherwise work through by
@@ -1105,7 +1341,18 @@ const DEPTH_THIN = 300;
 const DEPTH_LIGHT = 600;
 const DEPTH_ADEQUATE = 1200;
 
-function checkContentDepth(wordCount) {
+function checkContentDepth(wordCount, pageType) {
+  // A contact or legal page is meant to be brief. Scoring it on length produced a FAIL on a
+  // 16-word contact page that was doing its job, so these are reported as context instead.
+  if (pageType && !pageType.judgeDepth) {
+    return {
+      id: 'content-depth',
+      title: 'Content depth for citation',
+      status: 'INFO',
+      detail: `${wordCount} words. This is a ${pageType.label.toLowerCase()} page, which is not expected to carry citable depth — it is excluded from the depth assessment rather than failed for being short.`,
+      raw: { wordCount, pageType: pageType.id, judged: false }
+    };
+  }
   if (wordCount < DEPTH_THIN) {
     return {
       id: 'content-depth',
@@ -1152,7 +1399,16 @@ function measureSections($) {
   return sections;
 }
 
-function checkPageScope($, wordCount) {
+function checkPageScope($, wordCount, pageType) {
+  if (pageType && !pageType.judgeDepth) {
+    return {
+      id: 'page-scope',
+      title: 'Page scope — should this be split?',
+      status: 'INFO',
+      detail: `Not assessed — a ${pageType.label.toLowerCase()} page is single-purpose by design and is never a candidate for splitting.`,
+      raw: { pageType: pageType.id, judged: false }
+    };
+  }
   const sections = measureSections($);
   const navLinks = $('nav a[href], header a[href]').toArray().map(a => $(a).attr('href') || '');
   const realNavLinks = navLinks.filter(h => h && !/^#/.test(h) && !/^(mailto:|tel:|javascript:)/i.test(h));
@@ -1310,7 +1566,7 @@ function analyzePage(pageUrl, html) {
   checks.push({ id: 'image-alt', title: 'Image alt text coverage', status: images.total === 0 ? 'PASS' : (images.pct >= 80 ? 'PASS' : images.pct >= 40 ? 'WARNING' : 'FAIL'), detail: images.total === 0 ? 'No <img> tags on this page.' : `${images.withAlt}/${images.total} images (${images.pct}%) have non-empty alt text.`, howToFix: (images.total === 0 || images.pct >= 80) ? undefined : 'Add descriptive alt text to images missing it — this helps both accessibility tools and AI engines understand image content, especially on product/service pages.', raw: images });
   // Added checks (page discovery add-on) — each returns null when not applicable to this page
   // (e.g. no FAQ schema present) rather than forcing an irrelevant row.
-  [checkJsRendering($, mainText, html), checkFaqSchemaMatch($, mainText), checkAuthorAttribution($, mainText), checkFirstWordsSpecificity(mainText), checkContactMachineReadability($, mainText)]
+  [checkJsRendering($, mainText, html), checkSchemaCompleteness($), checkFaqSchemaMatch($, mainText), checkAuthorAttribution($, mainText), checkFirstWordsSpecificity(mainText), checkContactMachineReadability($, mainText)]
     .filter(Boolean)
     .forEach(c => checks.push(c));
 
@@ -1323,12 +1579,14 @@ function analyzePage(pageUrl, html) {
   // Counted once and shared, so every check and the reported wordCount are guaranteed to agree.
   const mainWordCount = mainText ? mainText.split(/\s+/).filter(Boolean).length : 0;
 
+  const pageType = detectPageType(pageUrl);
   const depthChecks = [
-    checkContentDepth(mainWordCount),
-    checkPageScope($, mainWordCount),
+    checkContentDepth(mainWordCount, pageType),
+    checkPageScope($, mainWordCount, pageType),
     checkAuthoritySignals($, mainText),
-    checkAnswerFormat($, mainText)
-  ];
+    checkAnswerFormat($, mainText),
+    checkFreshness($, mainText)
+  ].filter(Boolean);
 
   return { url: pageUrl, title, metaDescription, schemaTypes, headingInfo, canonical, og, images, mainText, depthChecks, wordCount: mainWordCount, checks, agenticChecks };
 }
@@ -1679,7 +1937,7 @@ function toggleWwwHost(href) {
   return u;
 }
 
-export async function runScan({ url, extraPages }) {
+export async function runScan({ url, extraPages, maxPages }) {
   let parsed = normalizeUrl(url);
 
   // ── Host resolution ──
@@ -1818,12 +2076,30 @@ export async function runScan({ url, extraPages }) {
     };
   }
 
+  // Sitemap sweep — runs after nav discovery so the pages our methodology treats as highest
+  // impact (About, FAQ) are always included, then fills whatever budget remains from the
+  // sitemap for a representative sample of the rest of the site.
+  const pageBudget = Math.max(1, Math.min(Number(maxPages) || DEFAULT_MAX_PAGES, 50));
+  let sitemapFetches = [];
+  let sitemapSweep = { attempted: false, listed: 0, sampled: 0 };
+  const sitemapSource = sitemapResult.raw && sitemapResult.raw.url;
+  if ($home && sitemapSource && sitemapResult.status !== 'INCONCLUSIVE') {
+    const covered = new Set([homepageUrl, ...cleanExtraPages, ...discoveredFetches.map(d => d.url)].map(normalizeUrlForCompare));
+    const listed = await collectSitemapUrls(sitemapSource, origin);
+    const candidates = listed.filter(u => !covered.has(normalizeUrlForCompare(u)));
+    const slots = Math.max(0, pageBudget - covered.size);
+    const chosen = sampleEvenly(candidates, slots);
+    sitemapSweep = { attempted: true, listed: listed.length, sampled: chosen.length };
+    if (chosen.length) sitemapFetches = await mapLimited(chosen, async u => ({ url: u, ...(await fetchSafe(u, USER_AGENTS.browser.ua)) }));
+  }
+
   // Section 2 + 3 + 4 source pages: homepage (if it loaded) + any extra pages that loaded +
   // any auto-discovered pages that loaded.
   const pageFetches = [
     { url: homepageUrl, html: homepageFetch.text, ok: homepageFetch.ok, status: homepageFetch.status },
     ...extraPageFetches.map(p => ({ url: p.url, html: p.text, ok: p.ok, status: p.status })),
-    ...discoveredFetches.map(p => ({ url: p.url, html: p.text, ok: p.ok, status: p.status }))
+    ...discoveredFetches.map(p => ({ url: p.url, html: p.text, ok: p.ok, status: p.status })),
+    ...sitemapFetches.map(p => ({ url: p.url, html: p.text, ok: p.ok, status: p.status }))
   ];
 
   const validPages = pageFetches.filter(p => p.ok && p.html);
@@ -1861,6 +2137,8 @@ export async function runScan({ url, extraPages }) {
       pagesAttempted: pageFetches.length,
       unverifiedChecks: section1Checks.filter(c => c.status === 'INCONCLUSIVE').length,
       unregisteredChecks,
+      pageBudget,
+      sitemapSweep,
       timeoutMs: FETCH_TIMEOUT_MS,
       maxConcurrency: MAX_CONCURRENT_FETCHES
     },

@@ -218,6 +218,13 @@ export const CHECKS = {
     rule: 'WARNING when contact details appear as plain text only.',
     why: 'Lets an agent act on the details rather than merely read them.'
   },
+  'schema-completeness': {
+    layer: 'readability', scored: true,
+    title: 'Structured data completeness',
+    measures: 'Every property actually present on each recognised schema.org type, checked against that type’s required and recommended properties.',
+    rule: 'FAIL when a type is missing a required property (Organization without name or url, LocalBusiness without an address). WARNING when most recommended properties are absent. Only recognised types are assessed.',
+    why: 'Presence alone proves nothing. A block carrying only @type and a name gives an engine no way to tie the markup to a real entity, yet it passes a presence check exactly as a complete one does.'
+  },
   'faq-schema-match': {
     layer: 'readability', scored: true,
     title: 'FAQ schema vs visible content',
@@ -275,6 +282,13 @@ export const CHECKS = {
     measures: 'Bylines, rel="author" links, and Person schema tied to authorship.',
     rule: 'WARNING when none is found.',
     why: 'Named, credentialed sources are weighted more heavily than unattributed corporate copy.'
+  },
+  'content-freshness': {
+    layer: 'substance', scored: true,
+    title: 'Freshness signals',
+    measures: 'dateModified, datePublished and uploadDate in structured data, <time datetime> elements, and article date metadata.',
+    rule: 'WARNING when no machine-readable date exists at all, or when the most recent is over a year old. PASS within a year.',
+    why: 'Engines weight recency. A page carrying no readable date cannot be assessed for it, which is itself a disadvantage against a competitor whose page is visibly current.'
   },
   'boilerplate': {
     layer: 'substance', scored: true,

@@ -18,6 +18,9 @@
 //   node scan.js <url> --html report.html --pdf report.pdf
 //   node scan.js <url> --pages /about,/services
 //   node scan.js <url> --pdf --style report   (branded print layout instead)
+//   node scan.js <url> --max-pages 30           (page budget; default 20, max 50)
+//   node scan.js <url> --save                   (record a snapshot, show the change since last)
+//   node scan.js <url> --vs a.com,b.com         (benchmark against competitors)
 //
 // Two report styles are available. The default matches the hosted tool exactly, because it
 // renders the result through index.html itself rather than imitating it. --style report uses the
@@ -26,6 +29,8 @@
 import { runScan } from './netlify/functions/lib/scan-engine.js';
 import { buildReportHtml } from './lib/report.js';
 import { buildWebStyleHtml } from './lib/web-report.js';
+import { saveSnapshot, previousSnapshot, snapshot, diff } from './lib/history.js';
+import { benchmark } from './lib/benchmark.js';
 import { dirname, resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { writeFileSync } from 'node:fs';
@@ -67,7 +72,7 @@ const STATUS_MARK = { PASS: 'ok  ', WARNING: 'warn', FAIL: 'FAIL', INCONCLUSIVE:
 
   let result;
   try {
-    result = await runScan({ url, extraPages });
+    result = await runScan({ url, extraPages, maxPages: Number(flag('max-pages')) || undefined });
   } catch (err) {
     console.error('Scan could not start:', err.message);
     process.exit(1);
@@ -103,6 +108,51 @@ const STATUS_MARK = { PASS: 'ok  ', WARNING: 'warn', FAIL: 'FAIL', INCONCLUSIVE:
       console.log(`\nNEEDS MANUAL VERIFICATION (${unver.length}) — not client findings`);
       for (const f of unver) console.log(`  - ${f.title}`);
     }
+    console.log('');
+  }
+
+  // History and benchmarking run after the console summary, so the scan result is already on
+  // screen even if a later competitor scan fails.
+  if (flag('save')) {
+    const path = saveSnapshot(result);
+    const delta = diff(snapshot(result), previousSnapshot(url));
+    console.log('Snapshot saved: ' + path);
+    if (!delta) {
+      console.log('  No earlier snapshot to compare against — this is the baseline.\n');
+    } else if (!delta.comparable) {
+      console.log('  ' + delta.reason + '\n');
+    } else {
+      const sign = n => (n > 0 ? '+' + n : String(n));
+      console.log('CHANGE SINCE ' + delta.previousDate.slice(0, 10));
+      console.log('  overall ' + delta.overall.from + ' -> ' + delta.overall.to + '  ' + sign(delta.overall.delta));
+      delta.layers.forEach(l => console.log('  ' + l.title.padEnd(34) + ' ' + (l.from === null ? '—' : l.from) + ' -> ' + (l.to === null ? '—' : l.to) + (l.delta === null ? '' : '  ' + sign(l.delta))));
+      if (delta.improved.length) { console.log('  improved:'); delta.improved.forEach(c => console.log('    ' + c.key + '  ' + c.from + ' -> ' + c.to)); }
+      if (delta.regressed.length) { console.log('  regressed:'); delta.regressed.forEach(c => console.log('    ' + c.key + '  ' + c.from + ' -> ' + c.to)); }
+      if (delta.added.length || delta.removed.length) console.log('  ' + delta.added.length + ' check(s) newly assessed, ' + delta.removed.length + ' no longer assessed');
+      console.log('');
+    }
+  }
+
+  const vs = flag('vs');
+  if (typeof vs === 'string' && result.reachable) {
+    const rivals = vs.split(',').map(v => v.trim()).filter(Boolean);
+    console.log('Benchmarking against ' + rivals.length + ' competitor(s) — this takes a while...\n');
+    const bm = await benchmark(runScan, result, rivals);
+    result.benchmark = bm;
+    console.log('COMPETITIVE POSITION: ' + (bm.position ? bm.position + ' of ' + bm.of : 'n/a'));
+    [bm.subject, ...bm.competitors].forEach(e => {
+      const mark = e.url === bm.subject.url ? '>' : ' ';
+      const val = (e.overall === null || e.overall === undefined) ? 'unreachable' : String(e.overall);
+      console.log('  ' + mark + ' ' + val.padStart(11) + '   ' + e.url);
+    });
+    if (bm.layerStanding.length) {
+      console.log('');
+      bm.layerStanding.forEach(l => {
+        const best = (l.best && l.best.url !== bm.subject.url) ? '   best: ' + l.best.score + ' — ' + l.best.url : '';
+        console.log('  ' + l.title.padEnd(34) + ' rank ' + l.rank + ' of ' + l.of + best);
+      });
+    }
+    if (bm.unreachable.length) console.log('\n  not reachable: ' + bm.unreachable.join(', '));
     console.log('');
   }
 
