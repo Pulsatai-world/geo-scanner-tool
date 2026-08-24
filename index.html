@@ -119,7 +119,7 @@
   table.checks td{padding:11px 12px;font-size:12.5px;border-bottom:1px solid var(--ice2);color:var(--ink-700);vertical-align:top}
   table.checks tr:last-child td{border-bottom:none}
   .chk-title{font-weight:700;color:var(--dark)}
-  .how-to-fix{margin-top:6px;font-size:11.5px;line-height:1.5;color:var(--emerald-700);background:var(--emerald-50);border-radius:6px;padding:6px 9px}
+  .how-to-fix{margin-top:9px;font-size:11.5px;line-height:1.55;color:var(--emerald-700);background:var(--emerald-50);border-radius:6px;padding:9px 11px}
   .how-to-fix b{color:var(--emerald-700)}
   .chk-toggle{font-family:var(--font-body);font-size:11px;color:var(--navy);background:none;border:1px solid var(--ink-200);border-radius:6px;padding:4px 9px;cursor:pointer;white-space:nowrap}
   .chk-toggle:hover{background:var(--ice2)}
@@ -133,7 +133,7 @@
   .page-panel.show{display:block}
 
   /* ── prioritized findings ── */
-  .finding{border-left:3px solid var(--ink-200);padding:10px 14px;margin-bottom:8px;border-radius:6px;background:var(--ice)}
+  .finding{border-left:3px solid var(--ink-200);padding:13px 16px;margin-bottom:12px;border-radius:6px;background:var(--ice)}
   .finding.blocker{border-left-color:#b03a3a;background:var(--danger-100)}
   .finding.unverified{border-left-color:var(--ink-300);border-left-style:dashed;background:var(--ice)}
   .finding.discovery{border-left-color:var(--ink-500);background:var(--ink-100)}
@@ -161,8 +161,24 @@
     body{background:#fff;padding:0}
     .head::after,.head::before{display:none}
     .no-print{display:none !important}
-    .card,.score-hero{box-shadow:none;break-inside:avoid}
     details.adv{display:none}
+
+    /* A card holding sixteen findings is several pages tall, so break-inside:avoid on the card
+       cannot be honoured — the browser discards the rule and then breaks wherever it likes,
+       including through the middle of a finding, stranding its "How to fix" on the next page.
+       Long containers must be allowed to flow; it is the blocks inside them that stay whole. */
+    .card{box-shadow:none;break-inside:auto}
+    .score-hero{box-shadow:none;break-inside:avoid}
+
+    .finding,.how-to-fix,.lchips{break-inside:avoid;page-break-inside:avoid}
+    .finding{margin-bottom:15px}
+    table.checks tr{break-inside:avoid;page-break-inside:avoid}
+    /* Repeat column headers when a check table runs past a page boundary. */
+    table.checks thead{display:table-header-group}
+
+    /* Never leave a heading or its caption alone at the foot of a page. */
+    .card-title,.card-caption,.layer-head,.layer-owner,.layer-note,.lpage-url{break-after:avoid;page-break-after:avoid}
+    .layer-card{break-before:auto}
   }
 </style>
 </head>
