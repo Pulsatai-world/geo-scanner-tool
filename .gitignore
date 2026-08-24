@@ -12,3 +12,6 @@ deno.lock
 geo-report-*.html
 geo-report-*.pdf
 geo-report-*.json
+geo-checklist.html
+geo-checklist.pdf
+preview.html
