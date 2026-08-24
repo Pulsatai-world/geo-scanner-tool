@@ -207,7 +207,7 @@
   </div>
   <div class="eyebrow">Akore Labs · GEO Technical Readiness</div>
   <h1 class="pagetitle" id="page-title">¿Pueden los motores de IA encontrar, leer y citar este sitio?</h1>
-  <div class="sub" id="page-sub">35 comprobaciones en tres capas: si los sistemas de IA pueden acceder al sitio, si una máquina puede interpretarlo, y si hay sustancia y autoridad suficientes para merecer una cita. Cada veredicto sigue una regla explícita, así que una misma página produce siempre el mismo resultado.</div>
+  <div class="sub" id="page-sub">35 revisiones en tres capas: si los sistemas de IA pueden acceder al sitio web, si una máquina puede interpretarlo, y si hay contenido y autoridad suficientes para merecer una cita. Cada veredicto sigue una regla explícita, así que una misma página produce siempre el mismo resultado.</div>
 </div>
 
 <div class="wrap">
@@ -409,25 +409,25 @@ function L(v) {
 
 var UI_TEXT = {
   es: {
-    scoreTitle: 'Puntuación de preparación técnica GEO', strong: 'Buena preparación GEO en página',
-    emerging: 'Preparación GEO en página en desarrollo', low: 'Preparación GEO en página baja',
-    notScored: 'no puntúa', countsToward: 'cuenta para la puntuación', whoFixes: 'Quién puede resolverlo',
+    scoreTitle: 'Calificación técnica GEO', strong: 'Buen nivel técnico GEO',
+    emerging: 'Nivel técnico GEO en desarrollo', low: 'Nivel técnico GEO bajo',
+    notScored: 'no puntúa', countsToward: 'cuenta para la calificación', whoFixes: 'Quién puede resolverlo',
     findings: 'Hallazgos priorizados',
     findingsCaption: 'Todo lo que requiere acción, de mayor a menor gravedad. Más abajo aparece agrupado por capa, junto con quién puede resolver cada punto.',
     howToFix: 'Cómo resolverlo', needsVer: 'Requiere verificación manual',
-    needsVerNote: 'El escáner no ha podido determinar estos puntos. Son cuestiones abiertas que debemos comprobar a mano, no problemas confirmados en el sitio.',
+    needsVerNote: 'El escáner no ha podido determinar estos puntos. Son cuestiones abiertas que debemos revisar a mano, no problemas confirmados en el sitio.',
     notClient: 'no son hallazgos para el cliente',
-    noIssues: 'Sin incidencias: todas las comprobaciones evaluables han pasado.',
-    noneEvaluated: 'Sin hallazgos. No se ha podido cargar el sitio, así que no se ha evaluado nada: consulta los puntos sin verificar más abajo.',
-    incomplete: 'Escaneo incompleto', unreachable: 'Sin puntuación: el escáner<br>no ha podido acceder al sitio',
-    unreachableNote: 'El escáner no ha podido cargar el sitio, así que no hay nada que puntuar. Esto <b>no</b> es un hallazgo sobre el sitio, que puede estar atendiendo visitas con normalidad. Consulta «Requiere verificación manual» más abajo.',
+    noIssues: 'Sin problemas: todas las revisiones evaluables han pasado.',
+    noneEvaluated: 'Sin hallazgos. No se ha podido cargar el sitio web, así que no se ha evaluado nada: consulta los puntos sin verificar más abajo.',
+    incomplete: 'Escaneo incompleto', unreachable: 'Sin calificación: el escáner<br>no ha podido acceder al sitio web',
+    unreachableNote: 'El escáner no ha podido cargar el sitio web, así que no hay nada que calificar. Esto <b>no</b> es un hallazgo sobre el sitio web, que puede estar atendiendo visitas con normalidad. Consulta «Requiere verificación manual» más abajo.',
     blockers: 'bloqueo(s) de rastreo — se listan aparte, no puntúan',
-    needVer: 'comprobación(es) requieren verificación manual',
-    scoreNote: 'Media de las dos capas puntuables, sobre {n} página(s). Dentro de cada capa todas las comprobaciones pesan igual. El Acceso se informa aparte porque depende del hosting y del CDN.',
-    toImprove: 'a mejorar', passing: 'correctas', failing: 'con fallo', unverified: 'sin verificar', info: 'informativas',
-    thCheck: 'Comprobación', thStatus: 'Estado', thDetail: 'Detalle', btnDetails: 'Detalles',
+    needVer: 'revisión(es) requieren verificación manual',
+    scoreNote: 'Media de las dos capas que califican, sobre {n} página(s). Dentro de cada capa todas las revisiones pesan igual. El Acceso se informa aparte porque depende del hosting y del CDN.',
+    toImprove: 'por mejorar', passing: 'cumplen', failing: 'no cumplen', unverified: 'sin verificar', info: 'informativas',
+    thCheck: 'Revisión', thStatus: 'Estado', thDetail: 'Detalle', btnDetails: 'Detalles',
     discovery: 'Detección de páginas clave',
-    ST: { PASS: 'CORRECTO', WARNING: 'AVISO', FAIL: 'FALLO', INCONCLUSIVE: 'SIN VERIFICAR', INFO: 'INFO' }
+    ST: { PASS: 'CUMPLE', WARNING: 'ATENCIÓN', FAIL: 'NO CUMPLE', INCONCLUSIVE: 'SIN VERIFICAR', INFO: 'INFO' }
   },
   en: {
     scoreTitle: 'GEO Technical Readiness Score', strong: 'Strong on-page GEO readiness',
@@ -468,7 +468,7 @@ function setLang(lang) {
 var CHROME = {
   es: {
     'page-title': '¿Pueden los motores de IA encontrar, leer y citar este sitio?',
-    'page-sub': '35 comprobaciones en tres capas: si los sistemas de IA pueden acceder al sitio, si una máquina puede interpretarlo, y si hay sustancia y autoridad suficientes para merecer una cita. Cada veredicto sigue una regla explícita, así que una misma página produce siempre el mismo resultado.',
+    'page-sub': '35 revisiones en tres capas: si los sistemas de IA pueden acceder al sitio web, si una máquina puede interpretarlo, y si hay contenido y autoridad suficientes para merecer una cita. Cada veredicto sigue una regla explícita, así que una misma página produce siempre el mismo resultado.',
     'findings-title': 'Hallazgos priorizados',
     'findings-caption': 'Todo lo que requiere acción, de mayor a menor gravedad. Más abajo aparece agrupado por capa, junto con quién puede resolver cada punto.',
     'discovery-title': 'Detección de páginas clave'

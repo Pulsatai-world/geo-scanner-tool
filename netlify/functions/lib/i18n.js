@@ -50,13 +50,13 @@ export function localize(node, lang = DEFAULT_LOCALE) {
 
 // Shared UI chrome, kept beside the check text so both live in one place.
 export const UI = {
-  scoreTitle: t('Puntuación de preparación técnica GEO', 'GEO Technical Readiness Score'),
+  scoreTitle: t('Calificación técnica GEO', 'GEO Technical Readiness Score'),
   scoreOf: t('/ 100', '/ 100'),
-  strong: t('Buena preparación GEO en página', 'Strong on-page GEO readiness'),
-  emerging: t('Preparación GEO en página en desarrollo', 'Emerging on-page GEO readiness'),
-  low: t('Preparación GEO en página baja', 'Low on-page GEO readiness'),
+  strong: t('Buen nivel técnico GEO', 'Strong on-page GEO readiness'),
+  emerging: t('Nivel técnico GEO en desarrollo', 'Emerging on-page GEO readiness'),
+  low: t('Nivel técnico GEO bajo', 'Low on-page GEO readiness'),
   notScored: t('no puntúa', 'not in score'),
-  countsToward: t('cuenta para la puntuación', 'counts toward score'),
+  countsToward: t('cuenta para la calificación', 'counts toward score'),
   whoFixes: t('Quién puede resolverlo', 'Who fixes this'),
   findingsTitle: t('Hallazgos priorizados', 'Prioritized findings'),
   findingsCaption: t(
@@ -66,36 +66,36 @@ export const UI = {
   howToFix: t('Cómo resolverlo', 'How to fix'),
   needsVerification: t('Requiere verificación manual', 'Needs manual verification'),
   needsVerificationNote: t(
-    'El escáner no ha podido determinar estos puntos. Son cuestiones abiertas que debemos comprobar a mano, no problemas confirmados en el sitio.',
+    'El escáner no ha podido determinar estos puntos. Son cuestiones abiertas que debemos revisar a mano, no problemas confirmados en el sitio.',
     'The scanner could not establish these. They are open questions for us to check, not problems confirmed on the site.'
   ),
   notClientFindings: t('no son hallazgos para el cliente', 'not client-facing findings'),
-  noIssues: t('Sin incidencias: todas las comprobaciones evaluables han pasado.', 'No issues found — every check that could be evaluated passed.'),
+  noIssues: t('Sin problemas: todas las revisiones evaluables han pasado.', 'No issues found — every check that could be evaluated passed.'),
   unreachableTitle: t('Escaneo incompleto', 'Scan incomplete'),
-  unreachableHead: t('Sin puntuación: el escáner no ha podido acceder al sitio', 'No score — site not reachable from the scanner'),
+  unreachableHead: t('Sin calificación: el escáner no ha podido acceder al sitio web', 'No score — site not reachable from the scanner'),
   unreachableNote: t(
-    'El escáner no ha podido cargar el sitio, así que no hay nada que puntuar. Esto <b>no</b> es un hallazgo sobre el sitio, que puede estar atendiendo visitas con normalidad. Consulta «Requiere verificación manual» más abajo.',
+    'El escáner no ha podido cargar el sitio web, así que no hay nada que calificar. Esto <b>no</b> es un hallazgo sobre el sitio web, que puede estar atendiendo visitas con normalidad. Consulta «Requiere verificación manual» más abajo.',
     'The scanner could not load this site, so there is nothing to score. This is <b>not</b> a finding about the site, which may be serving visitors normally. See "Needs manual verification" below for what was determined.'
   ),
   scoreNote: t(
-    'Media de las dos capas puntuables, sobre {n} página(s). Dentro de cada capa todas las comprobaciones pesan igual. El Acceso se informa aparte porque depende del hosting y del CDN: incluirlo dejaría que el ruido de infraestructura moviera una cifra que debe reflejar el trabajo realizado.',
+    'Media de las dos capas que califican, sobre {n} página(s). Dentro de cada capa todas las revisiones pesan igual. El Acceso se informa aparte porque depende del hosting y del CDN: incluirlo dejaría que el ruido de infraestructura moviera una cifra que debe reflejar el trabajo realizado.',
     'Mean of the two scored layers, across {n} page(s). Every check counts equally within its layer. Access is reported separately because it is hosting and CDN territory, and folding it in would let infrastructure noise move a number meant to track the work.'
   ),
   blockersTag: t('{n} bloqueo(s) de rastreo — se listan aparte, no puntúan', '{n} crawlability blocker(s) — listed separately, not scored'),
-  unverifiedTag: t('{n} comprobación(es) requieren verificación manual', '{n} check(s) need manual verification'),
-  toImprove: t('{n} a mejorar', '{n} to improve'),
-  passing: t('{n} correctas', '{n} passing'),
-  failing: t('{n} con fallo', '{n} failing'),
+  unverifiedTag: t('{n} revisión(es) requieren verificación manual', '{n} check(s) need manual verification'),
+  toImprove: t('{n} por mejorar', '{n} to improve'),
+  passing: t('{n} cumplen', '{n} passing'),
+  failing: t('{n} no cumplen', '{n} failing'),
   unverifiedChip: t('{n} sin verificar', '{n} unverified'),
   infoChip: t('{n} informativas', '{n} info'),
-  check: t('Comprobación', 'Check'),
+  check: t('Revisión', 'Check'),
   status: t('Estado', 'Status'),
   detail: t('Detalle', 'Detail'),
   details: t('Detalles', 'Details'),
   STATUS: {
-    PASS: t('CORRECTO', 'PASS'),
-    WARNING: t('AVISO', 'WARNING'),
-    FAIL: t('FALLO', 'FAIL'),
+    PASS: t('CUMPLE', 'PASS'),
+    WARNING: t('ATENCIÓN', 'WARNING'),
+    FAIL: t('NO CUMPLE', 'FAIL'),
     INCONCLUSIVE: t('SIN VERIFICAR', 'UNVERIFIED'),
     INFO: t('INFO', 'INFO')
   }

@@ -361,7 +361,7 @@ async function checkMultiUA(pageUrl, browserFetch) {
           `No user-agent completed a request, including a plain browser UA (${baseline.error}). Because the control request failed too, this tells us nothing about whether AI crawlers specifically are blocked — only that the scanner could not reach the origin.`
         ),
         howToFix: t(
-          'Consulta la comprobación de accesibilidad del sitio para ver qué se ha podido determinar sobre la conectividad. No lo interpretes como prueba de bloqueo de bots.',
+          'Consulta la revisión de accesibilidad del sitio para ver qué se ha podido determinar sobre la conectividad. No lo interpretes como prueba de bloqueo de bots.',
           'See the site-reachability check for what could be determined about connectivity. Do not treat this as evidence of bot-blocking.'
         ),
         raw: { results }
@@ -446,25 +446,25 @@ async function checkMultiUA(pageUrl, browserFetch) {
 function checkXRobotsTag(headers) {
   const val = headers ? headers.get('x-robots-tag') : null;
   if (!val) {
-    return { id: 'x-robots-tag', title: t('Cabecera X-Robots-Tag', 'X-Robots-Tag header'), status: 'PASS', detail: t('No hay cabecera X-Robots-Tag: este mecanismo de bloqueo a nivel de servidor no está en juego.', 'No X-Robots-Tag header present — this server-level blocking mechanism is not in play.'), raw: { value: null } };
+    return { id: 'x-robots-tag', title: t('Encabezado X-Robots-Tag', 'X-Robots-Tag header'), status: 'PASS', detail: t('No hay encabezado X-Robots-Tag: este mecanismo de bloqueo a nivel de servidor no está en juego.', 'No X-Robots-Tag header present — this server-level blocking mechanism is not in play.'), raw: { value: null } };
   }
   const blocking = /noindex|none/i.test(val);
   return {
     id: 'x-robots-tag',
-    title: t('Cabecera X-Robots-Tag', 'X-Robots-Tag header'),
+    title: t('Encabezado X-Robots-Tag', 'X-Robots-Tag header'),
     status: blocking ? 'FAIL' : 'WARNING',
     detail: blocking
       ? t(
-          `X-Robots-Tag: «${val}». Esta cabecera HTTP bloquea la indexación a nivel de servidor, al margen de robots.txt y de cualquier meta etiqueta. Es fácil pasarla por alto si no se revisan las cabeceras directamente.`,
+          `X-Robots-Tag: «${val}». Esta encabezado HTTP bloquea la indexación a nivel de servidor, al margen de robots.txt y de cualquier meta etiqueta. Es fácil pasarla por alto si no se revisan los encabezados directamente.`,
           `X-Robots-Tag: "${val}" — this HTTP header blocks indexing at the server level, separately from robots.txt and any meta tag. Easy to miss without checking headers directly.`
         )
       : t(
-          `Hay cabecera X-Robots-Tag («${val}»), pero no parece bloquear la indexación.`,
+          `Hay encabezado X-Robots-Tag («${val}»), pero no parece bloquear la indexación.`,
           `X-Robots-Tag present ("${val}") but does not appear to block indexing.`
         ),
     howToFix: blocking
       ? t(
-          'Elimina la directiva noindex de la cabecera de respuesta X-Robots-Tag. Suele configurarse en el servidor (.htaccess, nginx.conf) o en un plugin de seguridad o SEO, no en el HTML de la página, así que revisa ahí antes que en el editor del CMS.',
+          'Elimina la directiva noindex de la encabezado de respuesta X-Robots-Tag. Suele configurarse en el servidor (.htaccess, nginx.conf) o en un plugin de seguridad o SEO, no en el HTML de la página, así que revisa ahí antes que en el editor del CMS.',
           'Remove the noindex directive from the X-Robots-Tag response header — this is usually set in server config (.htaccess, nginx.conf) or a security/SEO plugin, not in page HTML, so check those before the CMS editor.'
         )
       : t(
@@ -670,7 +670,7 @@ function checkResponseTime(timingFetch, timingSamples) {
         `Response time could not be measured — ${timingFetch.error}. No timing conclusion can be drawn from a request that never completed.`
       ),
       howToFix: t(
-        'No implica ninguna acción sobre el sitio. Consulta la comprobación de accesibilidad para ver qué ha podido determinar el escáner sobre la conectividad.',
+        'No implica ninguna acción sobre el sitio. Consulta la revisión de accesibilidad para ver qué ha podido determinar el escáner sobre la conectividad.',
         'No action implied for the site. See the site-reachability check for what the scanner was able to determine about connectivity.'
       ),
       raw: { ms: timingFetch.ms, error: timingFetch.error, errorKind: timingFetch.errorKind, errorCode: timingFetch.errorCode }
@@ -761,7 +761,7 @@ function buildUnreachableCheck(kinds, sampleError) {
 // take, and flags where the real constraint is the platform rather than the site.
 const PLATFORMS = [
   {
-    id: 'lovable', noteEs: "Lovable es un creador de sitios con IA que aloja el sitio publicado en su propia infraestructura.", controlEs: "El propietario del sitio no tiene acceso a los ajustes de CDN ni de protección frente a bots: pertenecen a Lovable. Para controlarlos hay que publicar el sitio en un dominio enrutado a través de vuestro propio CDN, o exportarlo y alojarlo en otro sitio.", label: 'Lovable',
+    id: 'lovable', noteEs: "Lovable es un creador de sitios con IA que aloja el sitio publicado en su propia infraestructura.", controlEs: "El propietario del sitio no tiene acceso a los ajustes de CDN ni de protección frente a bots: pertenecen a Lovable. Para controlarlos hay que publicar el sitio en un dominio enrutado a través de su propio CDN, o exportarlo y alojarlo en otro sitio.", label: 'Lovable',
     managed: true,
     test: ({ html }) => /gpteng\.co|lovable-badge|lovable\.dev\/projects|\/~flock\.js/i.test(html),
     note: 'Lovable is an AI site builder that hosts the published site on its own infrastructure.',
@@ -831,7 +831,7 @@ function checkPlatform(platform) {
     ),
     howToFix: platform.managed
       ? t(
-          `Lee el resto del informe con esto en mente: todo lo que ocurre en la capa de red o CDN lo define ${platform.label} y no puede cambiarse desde el sitio. El trabajo en página —contenido, estructura, datos estructurados, enlazado interno— sí está por completo a vuestro alcance, y es ahí donde debe ir el esfuerzo.`,
+          `Lee el resto del informe con esto en mente: todo lo que ocurre en la capa de red o CDN lo define ${platform.label} y no puede cambiarse desde el sitio. El trabajo en página —contenido, estructura, datos estructurados, enlazado interno— sí está por completo a su alcance, y es ahí donde debe ir el esfuerzo.`,
           `Read the rest of this report with that in mind: anything at the network or CDN layer is set by ${platform.label} and cannot be changed from the site itself. On-page work — content, structure, schema, internal linking — is entirely within reach and is where the effort should go.`
         )
       : undefined,
@@ -884,7 +884,7 @@ function checkEdgeProtection(headers, platform) {
       title: t('Protección frente a bots en la capa de red (CDN/WAF)', 'Edge bot protection (CDN/WAF)'),
       status: 'PASS',
       detail: t(
-        'No se detecta ninguna huella de CDN ni de WAF en las cabeceras de respuesta, así que es improbable que haya bloqueo de rastreadores de IA en la capa de red.',
+        'No se detecta ninguna huella de CDN ni de WAF en los encabezados de respuesta, así que es improbable que haya bloqueo de rastreadores de IA en la capa de red.',
         'No CDN or WAF fingerprint detected in the response headers, so no edge-level AI crawler blocking is likely to be in play.'
       ),
       raw: { providers: [] }
@@ -904,7 +904,7 @@ function checkEdgeProtection(headers, platform) {
     ),
     howToFix: (platform && platform.managed)
       ? t(
-          `Esta capa de ${names} pertenece a ${platform.label}, la plataforma de alojamiento, no al propietario del sitio, que no dispone de panel para ella ni puede permitir o desbloquear nada a este nivel. ${platform.controlEs || platform.control} Da la capa de red por fija y dedica el esfuerzo al trabajo en página, que sí está por completo bajo vuestro control. Si el acceso de los rastreadores de IA en la capa de red resultara ser un problema real, las únicas vías son publicar en un dominio enrutado a través de vuestro propio CDN o dejar ${platform.label}.`,
+          `Esta capa de ${names} pertenece a ${platform.label}, la plataforma de alojamiento, no al propietario del sitio, que no dispone de panel para ella ni puede permitir o desbloquear nada a este nivel. ${platform.controlEs || platform.control} Da la capa de red por fija y dedica el esfuerzo al trabajo en página, que sí está por completo bajo su control. Si el acceso de los rastreadores de IA en la capa de red resultara ser un problema real, las únicas vías son publicar en un dominio enrutado a través de su propio CDN o dejar ${platform.label}.`,
           `This ${names} layer belongs to ${platform.label}, the hosting platform — not to the site owner, who has no dashboard for it and cannot allowlist or unblock anything at this level. ${platform.control} Treat the edge layer as fixed and put the effort into on-page work, which is fully under your control. If AI crawler access at the edge turns out to be a genuine problem, the routes are to publish to a domain you route through your own CDN, or to move off ${platform.label}.`
         )
       : t(
@@ -1055,7 +1055,7 @@ function buildPageDiscoveryReport(categories, alreadyCoveredUrls) {
             `Found at ${c.url}${alreadyIncluded ? ' (already covered by a manually-added page).' : ' — automatically added to the scan.'}`
           )
         : t(
-            `No se encuentra ninguna página de ${c.labelEs || c.label} enlazada desde la navegación, la cabecera o el pie del sitio.${impactNoteEs}`,
+            `No se encuentra ninguna página de ${c.labelEs || c.label} enlazada desde la navegación, la encabezado o el pie del sitio.${impactNoteEs}`,
             `No ${c.label} page found linked from the site's nav, header, or footer.${impactNote}`
           ),
       howToFix: c.found ? undefined : t(
@@ -1321,7 +1321,7 @@ function checkContactMachineReadability($, mainText) {
           'Contact info appears to be present as plain text only — no tel:/mailto: links or ContactPoint schema found.'
         ),
     howToFix: found ? undefined : t(
-      'Envuelve los teléfonos en enlaces tel: y los correos en enlaces mailto:, y añade schema ContactPoint. Así los agentes de IA (y quien navegue desde el móvil) pueden actuar sobre los datos de contacto, no solo leerlos.',
+      'Envuelve los teléfonos en enlaces tel: y los correos en enlaces mailto:, y añade schema ContactPoint. Así los agentes de IA (y quien navegue desde el celular) pueden actuar sobre los datos de contacto, no solo leerlos.',
       'Wrap phone numbers in tel: links and emails in mailto: links, and add ContactPoint schema. This lets AI agents (and mobile users) actually act on the contact info, not just read it.'
     ),
     raw: { telLinks, mailtoLinks, hasContactPointSchema }
@@ -1372,7 +1372,7 @@ function checkJsRendering($, mainText, html) {
     title: t('Contenido visible sin JavaScript', 'Content visible without JavaScript'),
     status: 'FAIL',
     detail: t(
-      `Esta página parece renderizar su contenido en el cliente: ${evEs.join(', ')}. Los rastreadores que no ejecutan JavaScript reciben una página prácticamente en blanco. Toma el resto de resultados en página de esta URL como poco fiables: las comprobaciones que informan de encabezados ausentes, contenido escaso o falta de datos estructurados están viendo el armazón vacío, no la página real.`,
+      `Esta página parece renderizar su contenido en el cliente: ${evEs.join(', ')}. Los rastreadores que no ejecutan JavaScript reciben una página prácticamente en blanco. Toma el resto de resultados en página de esta URL como poco fiables: las revisiones que informan de encabezados ausentes, contenido escaso o falta de datos estructurados están viendo el armazón vacío, no la página real.`,
       `This page appears to render its content client-side — ${evEn.join(', ')}. Crawlers that do not execute JavaScript receive an effectively blank page. Treat the other on-page results for this page as unreliable: checks reporting missing headings, thin content or absent schema are most likely observing the empty shell rather than the real page.`
     ),
     howToFix: t(
@@ -1495,7 +1495,7 @@ function checkSchemaCompleteness($) {
       title: t('Integridad de los datos estructurados', 'Structured data completeness'),
       status: 'WARNING',
       detail: t(
-        `Los datos estructurados son válidos pero escuetos: ${thin.map(x => `${x.type} omite ${x.missingRecommended.join(', ')}`).join('; ')}. Son precisamente las propiedades que conectan el marcado con una entidad reconocible del mundo real.`,
+        `Los datos estructurados son válidos pero incompletos: ${thin.map(x => `${x.type} omite ${x.missingRecommended.join(', ')}`).join('; ')}. Son precisamente las propiedades que conectan el marcado con una entidad reconocible del mundo real.`,
         `Structured data is valid but sparse: ${thin.map(x => `${x.type} omits ${x.missingRecommended.join(', ')}`).join('; ')}. These are the properties that connect the markup to a recognisable real-world entity.`
       ),
       howToFix: t(
@@ -1631,7 +1631,7 @@ function checkContentDepth(wordCount, pageType) {
         `${wordCount} words of main content. Below roughly ${DEPTH_THIN} words there is not enough substance for a generative engine to extract and cite a useful passage — the page can be crawled perfectly and still never be quoted, because there is nothing in it worth quoting.`
       ),
       howToFix: t(
-        `Amplía hasta al menos ${DEPTH_LIGHT}-${DEPTH_ADEQUATE} palabras de contenido con sustancia real: en qué consiste el servicio, a quién va dirigido, cómo se desarrolla, qué cuesta y qué resultado cabe esperar. La extensión por sí sola no sirve de nada; lo que se busca es material concreto del que un motor pueda sacar una respuesta.`,
+        `Amplía hasta al menos ${DEPTH_LIGHT}-${DEPTH_ADEQUATE} palabras de contenido de valor real: en qué consiste el servicio, a quién va dirigido, cómo se desarrolla, qué cuesta y qué resultado cabe esperar. La extensión por sí sola no sirve de nada; lo que se busca es material concreto del que un motor pueda sacar una respuesta.`,
         `Expand to at least ${DEPTH_LIGHT}-${DEPTH_ADEQUATE} words of genuinely substantive content: what the service actually involves, who it is for, how it works, what it costs, what the outcome looks like. Length alone is worthless — the target is specific, concrete material an engine can lift an answer from.`
       ),
       raw: { wordCount, band: 'thin' }
@@ -1733,7 +1733,7 @@ function checkPageScope($, wordCount, pageType) {
         `The page covers ${sections.length} topics at an average of ${avgSectionWords} words each. Each section is too thin to be retrieved on its own, and together they dilute what the page is about.`
       ),
       howToFix: t(
-        'Lleva a su propia página, con contenido sustancial, los apartados que merezcan posicionar, y deja aquí solo un resumen con enlace. Una página que trata de una sola cosa es recuperable; una que trata de seis no trata de ninguna.',
+        'Lleva a su propia página, con contenido de valor, los apartados que merezcan posicionar, y deja aquí solo un resumen con enlace. Una página que trata de una sola cosa es recuperable; una que trata de seis no trata de ninguna.',
         'Promote the sections that deserve to rank into their own pages with substantive content, and keep only a summary with a link on this page. A page that is about one thing is retrievable; a page about six things is about nothing.'
       ),
       raw
@@ -2143,7 +2143,7 @@ function computeAccessibilityTreeHealth(mainCheck, headingSeqCheck, formCheck, i
       `Composite estimate: ${score}/100, based on main-landmark presence, heading hierarchy, form labeling, and image alt coverage. Based on structural signals from static HTML only — for Chrome's full accessibility tree audit, cross-check with Google PageSpeed Insights.`
     ),
     howToFix: status === 'PASS' ? undefined : t(
-      'Resuelve las comprobaciones individuales anteriores (región <main>, jerarquía de encabezados, etiquetas de formulario y texto alternativo): esta puntuación compuesta sube a medida que mejoran.',
+      'Resuelve las revisiones individuales anteriores (región <main>, jerarquía de encabezados, etiquetas de formulario y texto alternativo): esta puntuación compuesta sube a medida que mejoran.',
       'Address the individual checks above (main landmark, heading hierarchy, form labels, image alt text) — this composite score moves as those improve.'
     ),
     raw: { score }

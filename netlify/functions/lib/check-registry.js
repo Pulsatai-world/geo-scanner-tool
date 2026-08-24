@@ -20,9 +20,9 @@ export const LAYERS = {
     id: 'access',
     order: 1,
     title: t('Capa 1 — Acceso', 'Layer 1 — Access'),
-    question: t('¿Pueden los sistemas de IA acceder al sitio?', 'Can AI systems reach this site at all?'),
+    question: t('¿Pueden los sistemas de IA acceder al sitio web?', 'Can AI systems reach this site at all?'),
     summary: t(
-      'Si los rastreadores y los bots de recuperación pueden descargar el sitio, y si algo los bloquea, los redirige o les limita la frecuencia. Si esto falla, nada de lo que viene después importa.',
+      'Si los rastreadores y los bots de recuperación pueden descargar el sitio web web, y si algo los bloquea, los redirige o les limita la frecuencia. Si esto falla, nada de lo que viene después importa.',
       'Whether crawlers and retrieval bots can fetch the site, and whether anything blocks, redirects or rate-limits them. Nothing downstream matters if this fails.'
     ),
     owner: t(
@@ -50,10 +50,10 @@ export const LAYERS = {
   substance: {
     id: 'substance',
     order: 3,
-    title: t('Capa 3 — Sustancia y autoridad', 'Layer 3 — Substance & authority'),
+    title: t('Capa 3 — Contenido y autoridad', 'Layer 3 — Substance & authority'),
     question: t('¿Hay aquí algo que merezca ser citado, y alguna razón para confiar en ello?', 'Is there anything here worth citing, and any reason to trust it?'),
     summary: t(
-      'Si la página tiene contenido suficientemente concreto y bien delimitado como para ser citada, y si demuestra que detrás hay una organización real y responsable. Una página puede superar todas las comprobaciones técnicas y aun así no citarse nunca, sencillamente porque no hay nada que citar.',
+      'Si la página tiene contenido suficientemente concreto y bien delimitado como para ser citada, y si demuestra que detrás hay una organización real y responsable. Una página puede superar todas las revisiones técnicas y aun así no citarse nunca, sencillamente porque no hay nada que citar.',
       'Whether the page carries enough specific, well-scoped content to be quoted, and whether it demonstrates a real, accountable organisation behind it. A page can pass every technical check and still never be cited because there is nothing in it to quote.'
     ),
     owner: t('Contenido y marketing.', 'Content and marketing.'),

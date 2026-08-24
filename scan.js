@@ -95,11 +95,13 @@ const STATUS_MARK = { PASS: 'ok  ', WARNING: 'warn', FAIL: 'FAIL', INCONCLUSIVE:
       console.log('\n' + L(reach.detail));
       if (reach.howToFix) console.log('\n' + (LANG === 'es' ? 'Qué hacer: ' : 'What to do: ') + L(reach.howToFix));
     }
-    console.log(`\nNo score is reported — nothing was measured. (${elapsed}s)\n`);
+    console.log(LANG === 'es'
+      ? `\nNo se informa calificación: no se ha medido nada. (${elapsed}s)\n`
+      : `\nNo score is reported — nothing was measured. (${elapsed}s)\n`);
   } else {
     const s = result.score;
-    console.log(LANG === 'es' ? `PREPARACIÓN GEO EN PÁGINA: ${s.overall}/100` : `ON-PAGE GEO READINESS: ${s.overall}/100`);
-    (result.layers || []).forEach(l => console.log(`  ${pad(L(l.title), 34)} ${l.score === null ? ' —' : String(l.score).padStart(3)}${l.scored ? '' : (LANG === 'es' ? '   (no puntúa)' : '   (not in score)')}`));
+    console.log(LANG === 'es' ? `CALIFICACIÓN TÉCNICA GEO: ${s.overall}/100` : `ON-PAGE GEO READINESS: ${s.overall}/100`);
+    (result.layers || []).forEach(l => console.log(`  ${pad(L(l.title), 34)} ${l.score === null ? ' —' : String(l.score).padStart(3)}${l.scored ? '' : (LANG === 'es' ? '   (no califica)' : '   (not in score)')}`));
     console.log(LANG === 'es'
       ? `  ${result.scanQuality.pagesAnalyzed} página(s) analizada(s) · ${s.blockers.count} bloqueo(s) · ${s.unverified.count} sin verificar · ${elapsed}s\n`
       : `  ${result.scanQuality.pagesAnalyzed} page(s) analysed · ${s.blockers.count} blocker(s) · ${s.unverified.count} unverified · ${elapsed}s\n`);
@@ -109,13 +111,15 @@ const STATUS_MARK = { PASS: 'ok  ', WARNING: 'warn', FAIL: 'FAIL', INCONCLUSIVE:
 
     const actionable = result.prioritizedFindings.filter(f => f.priority !== 'unverified');
     if (actionable.length) {
-      console.log(`\nFINDINGS (${actionable.length})`);
+      console.log(LANG === 'es' ? `\nHALLAZGOS (${actionable.length})` : `\nFINDINGS (${actionable.length})`);
       for (const f of actionable) console.log(`  [${STATUS_MARK[f.status] || ''}] ${pad(L(f.section), 34)} ${L(f.title)}`);
     }
 
     const unver = result.prioritizedFindings.filter(f => f.priority === 'unverified');
     if (unver.length) {
-      console.log(`\nNEEDS MANUAL VERIFICATION (${unver.length}) — not client findings`);
+      console.log(LANG === 'es'
+        ? `\nREQUIERE VERIFICACIÓN MANUAL (${unver.length}) — no son hallazgos para el cliente`
+        : `\nNEEDS MANUAL VERIFICATION (${unver.length}) — not client findings`);
       for (const f of unver) console.log(`  - ${L(f.title)}`);
     }
     console.log('');
@@ -135,7 +139,9 @@ const STATUS_MARK = { PASS: 'ok  ', WARNING: 'warn', FAIL: 'FAIL', INCONCLUSIVE:
       const sign = n => (n > 0 ? '+' + n : String(n));
       console.log('CHANGE SINCE ' + delta.previousDate.slice(0, 10));
       console.log('  overall ' + delta.overall.from + ' -> ' + delta.overall.to + '  ' + sign(delta.overall.delta));
-      delta.layers.forEach(l => console.log('  ' + l.title.padEnd(34) + ' ' + (l.from === null ? '—' : l.from) + ' -> ' + (l.to === null ? '—' : l.to) + (l.delta === null ? '' : '  ' + sign(l.delta))));
+      // l.title comes from a stored snapshot, where it is still the bilingual object — resolving
+      // it here is what keeps the delta from printing [object Object] for every layer.
+      delta.layers.forEach(l => console.log('  ' + pad(L(l.title), 34) + ' ' + (l.from === null ? '—' : l.from) + ' -> ' + (l.to === null ? '—' : l.to) + (l.delta === null ? '' : '  ' + sign(l.delta))));
       if (delta.improved.length) { console.log('  improved:'); delta.improved.forEach(c => console.log('    ' + c.key + '  ' + c.from + ' -> ' + c.to)); }
       if (delta.regressed.length) { console.log('  regressed:'); delta.regressed.forEach(c => console.log('    ' + c.key + '  ' + c.from + ' -> ' + c.to)); }
       if (delta.added.length || delta.removed.length) console.log('  ' + delta.added.length + ' check(s) newly assessed, ' + delta.removed.length + ' no longer assessed');
