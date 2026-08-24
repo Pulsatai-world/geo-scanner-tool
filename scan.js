@@ -50,7 +50,7 @@ const CHROME_PATHS = [
 ];
 
 const pad = (s, n) => String(s).padEnd(n);
-const STATUS_MARK = { PASS: 'ok  ', WARNING: 'warn', FAIL: 'FAIL', INCONCLUSIVE: '  ? ' };
+const STATUS_MARK = { PASS: 'ok  ', WARNING: 'warn', FAIL: 'FAIL', INCONCLUSIVE: '  ? ', INFO: 'info' };
 
 (async () => {
   const started = Date.now();
@@ -98,9 +98,13 @@ const STATUS_MARK = { PASS: 'ok  ', WARNING: 'warn', FAIL: 'FAIL', INCONCLUSIVE:
     console.log('');
   }
 
+  const slug = (() => { try { return new URL(url).hostname.replace(/^www\./, '').replace(/[^a-z0-9.-]/gi, '-'); } catch { return 'site'; } })();
+  const stamp = new Date().toISOString().slice(0, 10);
+  const defaultName = ext => `geo-report-${slug}-${stamp}.${ext}`;
+
   const jsonOut = flag('json');
   if (jsonOut) {
-    const path = typeof jsonOut === 'string' ? jsonOut : 'scan-result.json';
+    const path = typeof jsonOut === 'string' ? jsonOut : defaultName('json');
     writeFileSync(path, JSON.stringify(result, null, 2));
     console.log('JSON written:  ' + path);
   }
@@ -108,12 +112,12 @@ const STATUS_MARK = { PASS: 'ok  ', WARNING: 'warn', FAIL: 'FAIL', INCONCLUSIVE:
   const htmlOut = flag('html');
   const pdfOut = flag('pdf');
   if (htmlOut || pdfOut) {
-    const htmlPath = typeof htmlOut === 'string' ? htmlOut : 'geo-report.html';
+    const htmlPath = typeof htmlOut === 'string' ? htmlOut : defaultName('html');
     writeFileSync(htmlPath, buildReportHtml(result));
     console.log('HTML written:  ' + htmlPath);
 
     if (pdfOut) {
-      const pdfPath = typeof pdfOut === 'string' ? pdfOut : 'geo-report.pdf';
+      const pdfPath = typeof pdfOut === 'string' ? pdfOut : defaultName('pdf');
       const chrome = CHROME_PATHS.find(p => existsSync(p));
       if (!chrome) {
         console.log('PDF skipped:   no Chrome or Edge found. Open the HTML and print to PDF instead.');

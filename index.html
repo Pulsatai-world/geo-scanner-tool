@@ -69,6 +69,8 @@
   /* Deliberately neutral, not red: an unverified check is not a defect. It reads as "we could
      not establish this", which is a manual task for us — never a fix for the client. */
   .badge-INCONCLUSIVE{background:var(--ink-100);color:var(--ink-600);border:1px dashed var(--ink-300)}
+  /* Neutral context, not a verdict: unscored, and never shown as a client finding. */
+  .badge-INFO{background:var(--violet-100);color:var(--violet-700)}
 
   /* ── score hero ── */
   .score-hero{margin-top:4px;background:var(--dark);color:#fff;border-radius:var(--radius-lg);padding:28px 30px;display:flex;gap:36px;flex-wrap:wrap;align-items:center;box-shadow:var(--shadow-md);position:relative;overflow:hidden}

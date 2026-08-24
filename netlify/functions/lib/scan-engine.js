@@ -597,6 +597,87 @@ function buildUnreachableCheck(kinds, sampleError) {
   };
 }
 
+// ── Hosting platform detection ──
+// Which platform a site is built on decides who is able to fix what, and the report is close to
+// useless without it. A site on a managed builder sits behind that builder's CDN, not one the
+// client controls — so telling the owner of a Lovable or Wix site to open their Cloudflare
+// dashboard and adjust bot settings sends them looking for a dashboard they will never find.
+// Detecting the platform lets the edge-protection advice name a route the client can actually
+// take, and flags where the real constraint is the platform rather than the site.
+const PLATFORMS = [
+  {
+    id: 'lovable', label: 'Lovable',
+    managed: true,
+    test: ({ html }) => /gpteng\.co|lovable-badge|lovable\.dev\/projects|\/~flock\.js/i.test(html),
+    note: 'Lovable is an AI site builder that hosts the published site on its own infrastructure.',
+    control: 'Site owners have no access to the CDN or bot-protection settings — those belong to Lovable. To control them, the site has to be published to a domain you route through your own CDN, or exported and hosted elsewhere.'
+  },
+  {
+    id: 'wix', label: 'Wix', managed: true,
+    test: ({ html, headers }) => /static\.parastorage\.com|wix-?code|X-Wix-/i.test(html) || /wix/i.test(headers['x-wix-request-id'] || ''),
+    note: 'Wix hosts the site on its own infrastructure.',
+    control: 'CDN and bot-protection settings are managed by Wix and are not exposed to site owners. SEO-facing controls are limited to what the Wix SEO panel offers.'
+  },
+  {
+    id: 'squarespace', label: 'Squarespace', managed: true,
+    test: ({ html, headers }) => /static1\.squarespace\.com|squarespace\.com\/universal/i.test(html) || /squarespace/i.test(headers.server || ''),
+    note: 'Squarespace hosts the site on its own infrastructure.',
+    control: 'CDN and bot settings are managed by Squarespace. robots.txt is partially editable through their SEO settings; the edge layer is not.'
+  },
+  {
+    id: 'framer', label: 'Framer', managed: true,
+    test: ({ html }) => /framerusercontent\.com|framer\.com\/m\//i.test(html),
+    note: 'Framer hosts the published site on its own infrastructure.',
+    control: 'Edge and bot settings belong to Framer and are not configurable per site.'
+  },
+  {
+    id: 'webflow', label: 'Webflow', managed: true,
+    test: ({ html, headers }) => /assets(-global)?\.website-files\.com|webflow\.io/i.test(html) || /webflow/i.test(headers['x-served-by'] || ''),
+    note: 'Webflow hosts the published site on its own infrastructure.',
+    control: 'Webflow manages the CDN. robots.txt is editable in site settings; edge bot rules are not.'
+  },
+  {
+    id: 'shopify', label: 'Shopify', managed: true,
+    test: ({ html, headers }) => /cdn\.shopify\.com|Shopify\.theme/i.test(html) || !!headers['x-shopid'],
+    note: 'Shopify hosts the storefront on its own infrastructure.',
+    control: 'Shopify manages the CDN and bot protection. robots.txt is editable via robots.txt.liquid; the edge layer is not.'
+  },
+  {
+    id: 'wordpress', label: 'WordPress', managed: false,
+    test: ({ html }) => /wp-content\/|wp-includes\/|\/wp-json\//i.test(html),
+    note: 'WordPress, self-hosted — the hosting account and any CDN in front of it are under the owner\'s control.',
+    control: 'Full control over robots.txt, hosting, and any CDN or WAF the site sits behind.'
+  }
+];
+
+function detectPlatform($, headers, html) {
+  const h = {};
+  if (headers) { try { headers.forEach((v, k) => { h[k.toLowerCase()] = v; }); } catch { /* ignore */ } }
+  const ctx = { html: html || '', headers: h };
+  for (const p of PLATFORMS) {
+    let hit = false;
+    try { hit = p.test(ctx); } catch { hit = false; }
+    if (hit) return p;
+  }
+  return null;
+}
+
+// Reported as INFO: it is context for reading the rest of the report, never a pass or a failure,
+// and it carries no score.
+function checkPlatform(platform) {
+  if (!platform) return null;
+  return {
+    id: 'hosting-platform',
+    title: 'Hosting platform',
+    status: 'INFO',
+    detail: `Built and hosted on ${platform.label}. ${platform.note} ${platform.control}`,
+    howToFix: platform.managed
+      ? `Read the rest of this report with that in mind: anything at the network or CDN layer is set by ${platform.label} and cannot be changed from the site itself. On-page work — content, structure, schema, internal linking — is entirely within reach and is where the effort should go.`
+      : undefined,
+    raw: { platform: platform.id, managedHosting: platform.managed }
+  };
+}
+
 // ── Edge protection / CDN fingerprint ──
 // Our user-agent test cannot settle whether AI crawlers are blocked at a CDN edge, because
 // Cloudflare and similar services identify verified bots by source IP range, not by UA string.
@@ -610,7 +691,7 @@ const EDGE_PROVIDERS = [
   { id: 'imperva', label: 'Imperva / Incapsula', test: h => !!h['x-iinfo'] || /incap/i.test(h['x-cdn'] || ''), where: 'Imperva Bot Protection settings' }
 ];
 
-function checkEdgeProtection(headers) {
+function checkEdgeProtection(headers, platform) {
   if (!headers) return null;
   const h = {};
   try { headers.forEach((v, k) => { h[k.toLowerCase()] = v; }); } catch { return null; }
@@ -634,7 +715,9 @@ function checkEdgeProtection(headers) {
     title: 'Edge bot protection (CDN/WAF)',
     status: 'INCONCLUSIVE',
     detail: `This site is served through ${names}${botManaged ? ', with bot management actively running (a __cf_bm token was issued on this request)' : ''}. Edge services identify AI crawlers by source IP range, not by user-agent string, so the user-agent test above cannot confirm whether GPTBot or ClaudeBot are actually allowed through — a UA test passes regardless. This requires manual verification and is reported as unverified rather than as a pass.`,
-    howToFix: `Verify AI crawler access directly in ${found.map(p => p.where).join(' / ')}. These settings block AI crawlers at the network edge independently of robots.txt, and on some providers newer domains have them enabled by default without the owner ever choosing it — so an unchanged, untouched site can still be invisible. Check the retrieval crawlers first (OAI-SearchBot, ChatGPT-User, Claude-User, PerplexityBot): they are usually governed by a separate toggle from the training crawlers, and they are the ones that determine whether the site can be cited in an answer. The robots.txt result in this report is unaffected by any of this and remains reliable — it is only the edge layer that cannot be confirmed remotely.`,
+    howToFix: (platform && platform.managed)
+      ? `This ${names} layer belongs to ${platform.label}, the hosting platform — not to the site owner, who has no dashboard for it and cannot allowlist or unblock anything at this level. ${platform.control} Treat the edge layer as fixed and put the effort into on-page work, which is fully under your control. If AI crawler access at the edge turns out to be a genuine problem, the routes are to publish to a domain you route through your own CDN, or to move off ${platform.label}.`
+      : `Verify AI crawler access directly in ${found.map(p => p.where).join(' / ')}. These settings block AI crawlers at the network edge independently of robots.txt, and on some providers newer domains have them enabled by default without the owner ever choosing it — so an unchanged, untouched site can still be invisible. Check the retrieval crawlers first (OAI-SearchBot, ChatGPT-User, Claude-User, PerplexityBot): they are usually governed by a separate toggle from the training crawlers, and they are the ones that determine whether the site can be cited in an answer. The robots.txt result in this report is unaffected by any of this and remains reliable — it is only the edge layer that cannot be confirmed remotely.`,
     raw: { providers: found.map(p => p.id), botManagementCookie: botManaged, server: h.server || null }
   };
 }
@@ -1333,7 +1416,9 @@ export async function runScan({ url, extraPages }) {
 
   if (homepageFetch.ok) {
     $home = cheerio.load(homepageFetch.text);
-    const edgeCheck = checkEdgeProtection(homepageFetch.headers);
+    const platform = detectPlatform($home, homepageFetch.headers, homepageFetch.text);
+    const platformCheck = checkPlatform(platform);
+    const edgeCheck = checkEdgeProtection(homepageFetch.headers, platform);
     section1Checks.push(
       multiUA.check,
       robotsResult,
@@ -1342,6 +1427,7 @@ export async function runScan({ url, extraPages }) {
       sitemapResult,
       checkResponseTime(timingFetch, timingSamples)
     );
+    if (platformCheck) section1Checks.push(platformCheck);
     if (edgeCheck) section1Checks.push(edgeCheck);
     if (llmsResult) section1Checks.push(llmsResult);
   } else {
