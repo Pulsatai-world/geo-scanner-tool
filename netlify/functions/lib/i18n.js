@@ -66,7 +66,7 @@ export const UI = {
   howToFix: t('Cómo resolverlo', 'How to fix'),
   needsVerification: t('Requiere verificación manual', 'Needs manual verification'),
   needsVerificationNote: t(
-    'El escáner no ha podido determinar estos puntos. Son cuestiones abiertas que debemos revisar a mano, no problemas confirmados en el sitio.',
+    'El escáner no ha podido determinar estos puntos. Son cuestiones abiertas que debemos revisar a mano, no problemas confirmados en el sitio web.',
     'The scanner could not establish these. They are open questions for us to check, not problems confirmed on the site.'
   ),
   notClientFindings: t('no son hallazgos para el cliente', 'not client-facing findings'),

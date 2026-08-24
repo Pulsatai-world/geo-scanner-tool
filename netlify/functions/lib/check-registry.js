@@ -22,7 +22,7 @@ export const LAYERS = {
     title: t('Capa 1 — Acceso', 'Layer 1 — Access'),
     question: t('¿Pueden los sistemas de IA acceder al sitio web?', 'Can AI systems reach this site at all?'),
     summary: t(
-      'Si los rastreadores y los bots de recuperación pueden descargar el sitio web web, y si algo los bloquea, los redirige o les limita la frecuencia. Si esto falla, nada de lo que viene después importa.',
+      'Si los rastreadores y los bots de recuperación pueden descargar el sitio web, y si algo los bloquea, los redirige o les limita la frecuencia. Si esto falla, nada de lo que viene después importa.',
       'Whether crawlers and retrieval bots can fetch the site, and whether anything blocks, redirects or rate-limits them. Nothing downstream matters if this fails.'
     ),
     owner: t(
