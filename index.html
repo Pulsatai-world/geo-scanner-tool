@@ -94,6 +94,25 @@
   .score-sub .sl{font-family:var(--font-display);font-size:10.5px;font-weight:600;color:#c9c2e8;text-transform:uppercase;letter-spacing:.06em}
   .score-sub .sv{font-family:var(--font-display);font-size:1.7rem;font-weight:800;color:var(--violet-400);line-height:1;font-variant-numeric:tabular-nums}
 
+  /* ── layer cards ── */
+  .layer-card{margin-bottom:18px}
+  .layer-head{display:flex;justify-content:space-between;align-items:flex-start;gap:18px;flex-wrap:wrap}
+  .layer-q{font-size:13px;color:var(--ink-500);margin-top:2px}
+  .layer-score{text-align:right;flex:none}
+  .ls-num{font-family:var(--font-display);font-size:2rem;font-weight:800;line-height:1;color:var(--violet-600);font-variant-numeric:tabular-nums}
+  .ls-lbl{font-size:9.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--ink-400);margin-top:3px}
+  .layer-owner{font-size:12px;color:var(--ink-600);margin-top:8px}
+  .layer-note{font-size:11.5px;color:var(--ink-500);background:var(--ice);border-radius:6px;padding:8px 11px;margin-top:8px;line-height:1.5}
+  .lchips{display:flex;gap:7px;flex-wrap:wrap;margin:12px 0 10px}
+  .lchip{font-size:10px;font-weight:700;padding:3px 9px;border-radius:999px;letter-spacing:.02em}
+  .lchip-PASS{background:var(--emerald-100);color:var(--emerald-700)}
+  .lchip-WARNING{background:var(--warning-100);color:#8a6a12}
+  .lchip-FAIL{background:var(--danger-100);color:#b03a3a}
+  .lchip-INCONCLUSIVE{background:var(--ink-100);color:var(--ink-600)}
+  .lchip-INFO{background:var(--violet-100);color:var(--violet-700)}
+  .lpage{margin-top:14px}
+  .lpage-url{font-family:var(--mono);font-size:10.5px;color:var(--ink-500);margin-bottom:5px;word-break:break-all}
+
   /* ── results table ── */
   table.checks{width:100%;border-collapse:collapse}
   table.checks th{background:var(--ice2);padding:9px 12px;text-align:left;font-size:9.5px;text-transform:uppercase;letter-spacing:.07em;font-weight:700;color:var(--ink-400);border-bottom:1px solid var(--line)}
@@ -157,9 +176,9 @@
       <div class="logo-sub">GEO On-Page Scanner</div>
     </div>
   </div>
-  <div class="eyebrow">Akore Labs · GEO · Layer 1</div>
-  <h1 class="pagetitle">Is this site even crawlable?</h1>
-  <div class="sub">Before reading any citation-rate scores, this checks whether a site is structurally capable of being crawled and cited by AI engines at all — robots.txt rules, bot-specific blocking, noindex signals, structured data, agentic-browsing accessibility, and content specificity.</div>
+  <div class="eyebrow">Akore Labs · GEO Technical Readiness</div>
+  <h1 class="pagetitle">Can AI engines find, read and cite this site?</h1>
+  <div class="sub">33 checks in three layers: whether AI systems can reach the site, whether a machine can parse it, and whether there is enough substance and authority to be worth citing. Every verdict follows a stated rule, so the same page always produces the same result.</div>
 </div>
 
 <div class="wrap">
@@ -197,42 +216,19 @@
 
     <div class="card">
       <div class="card-title">Prioritized findings</div>
-      <div class="card-caption">Critical crawlability issues first, then on-page gaps, then content-specificity notes — mirrors the Plan de Acción por Fases structure.</div>
+      <div class="card-caption">Everything needing action, most severe first. Grouped by layer below, alongside who is able to fix each one.</div>
       <div id="findings-list"></div>
     </div>
 
-    <div class="card">
-      <div class="card-title">Section 1 · Crawlability Layer</div>
-      <div class="card-caption">The most important section — this is Layer 1 of the methodology. If this fails, nothing downstream matters yet.</div>
-      <div id="section1-table"></div>
-    </div>
+    <!-- Results are grouped by the question each check answers, and by who can act on it:
+         access is hosting and DNS, readability is the developer, substance is the content team.
+         Rendered from the layer view the engine builds off the check registry. -->
+    <div id="layers"></div>
 
     <div class="card">
       <div class="card-title">Key Page Discovery</div>
       <div class="card-caption" id="discovery-caption">Automatically checked the site's nav, header, and footer for About, FAQ, Contact, Services, and Blog pages — About and FAQ are the two highest-impact page types for GEO. Anything found is added to the scan below automatically.</div>
       <div id="discovery-table"></div>
-    </div>
-
-    <div class="card">
-      <div class="card-title">Section 2 · On-Page GEO Signals</div>
-      <div class="card-caption">Homepage plus any additional pages checked — including any pages found automatically via Key Page Discovery above.</div>
-      <div class="page-tabs" id="section2-tabs"></div>
-      <div id="section2-panels"></div>
-    </div>
-
-    <div class="card">
-      <div class="card-title">Section 4 · Agentic Browsing / AI Agent Accessibility</div>
-      <div class="card-caption">Structural checks from Chrome Lighthouse's new "Agentic Browsing" category — main-landmark presence, strict heading order, form labeling, and a composite accessibility-tree health estimate. Achievable via static HTML parsing only; Cumulative Layout Shift and WebMCP validation need a real rendered browser and aren't attempted here — cross-check those with Google PageSpeed Insights.</div>
-      <div class="page-tabs" id="section4-tabs"></div>
-      <div id="section4-panels"></div>
-    </div>
-
-    <div class="card">
-      <div class="card-title">Section 3 · Content Specificity Signals</div>
-      <div class="card-caption">Best-effort heuristics — lower precision than Sections 1-2, treated as directional signal, not a hard pass/fail.</div>
-      <div class="page-tabs" id="section3-tabs"></div>
-      <div id="section3-panels"></div>
-      <div style="margin-top:14px;" id="boilerplate-block"></div>
     </div>
   </div>
 
@@ -384,18 +380,19 @@ function renderResults(data) {
     const label = s.overall >= 70 ? 'Strong on-page GEO readiness' : s.overall >= 40 ? 'Emerging on-page GEO readiness' : 'Low on-page GEO readiness';
     document.getElementById('score-hero').innerHTML = `
       <div class="score-main">
-        <div class="score-eyebrow">On-Page GEO Readiness Score</div>
+        <div class="score-eyebrow">GEO Technical Readiness Score</div>
         <div class="score-figure"><span class="score-num ${scoreClass(s.overall)}">${s.overall}</span><span class="score-den">/ 100</span></div>
         <div class="score-label">${esc(label)}</div>
         ${s.blockers.count ? `<div class="blocker-tag">${s.blockers.count} crawlability blocker${s.blockers.count === 1 ? '' : 's'} — listed separately, not scored</div>` : ''}
         ${s.unverified.count ? `<div class="unverified-tag">${s.unverified.count} check${s.unverified.count === 1 ? '' : 's'} need manual verification</div>` : ''}
-        <div class="score-note">Measures on-page factors your web team can change, across ${q.pagesAnalyzed || 0} page${q.pagesAnalyzed === 1 ? '' : 's'}. Crawlability is reported separately as blockers — it is hosting and WAF territory, and folding it in would let infrastructure noise move a number meant to track on-page work.</div>
+        <div class="score-note">Mean of the two scored layers, across ${q.pagesAnalyzed || 0} page${q.pagesAnalyzed === 1 ? '' : 's'}. Every check counts equally within its layer. Access is reported separately because it is hosting and CDN territory, and folding it in would let infrastructure noise move a number meant to track the work.</div>
       </div>
       <div class="score-subs">
-        <div class="score-sub"><div class="sl">On-Page</div><div class="sv">${s.sections.onPage ?? '—'}</div></div>
-        <div class="score-sub"><div class="sl">Agentic Browsing</div><div class="sv">${s.sections.agenticBrowsing ?? '—'}</div></div>
-        <div class="score-sub"><div class="sl">Content Specificity</div><div class="sv">${s.sections.contentSpecificity ?? '—'}</div></div>
-        <div class="score-sub"><div class="sl">Crawlability<br><span style="font-weight:500;text-transform:none;letter-spacing:0">(not in score)</span></div><div class="sv">${s.sections.crawlability ?? '—'}</div></div>
+        ${(data.layers || []).map(l => `
+          <div class="score-sub">
+            <div class="sl">${esc(l.title.replace(/^Layer \d+ — /, ''))}${l.scored ? '' : '<br><span style="font-weight:500;text-transform:none;letter-spacing:0">(not in score)</span>'}</div>
+            <div class="sv">${l.score === null ? '—' : l.score}</div>
+          </div>`).join('')}
       </div>`;
   }
 
@@ -430,33 +427,60 @@ function renderResults(data) {
   }
   findingsList.innerHTML = findingsHtml;
 
-  document.getElementById('section1-table').innerHTML = renderChecksTable(data.section1.checks, 's1');
+  renderLayers(data);
 
   if (data.pageDiscovery.skipped) {
     document.getElementById('discovery-caption').textContent = 'Could not run — the homepage could not be loaded, so its navigation was never parsed. These pages may well exist; their absence here is not a finding.';
   }
   document.getElementById('discovery-table').innerHTML = renderChecksTable(data.pageDiscovery.categories, 'disc');
+}
 
-  const tabs2 = document.getElementById('section2-tabs');
-  const panels2 = document.getElementById('section2-panels');
-  tabs2.innerHTML = data.section2.pages.map((p, i) => `<button class="page-tab ${i === 0 ? 'active' : ''}" onclick="switchTab('s2', ${i})">${esc(shortUrl(p.url))}</button>`).join('');
-  panels2.innerHTML = data.section2.pages.map((p, i) => `<div class="page-panel ${i === 0 ? 'show' : ''}" id="s2-panel-${i}">${renderChecksTable(p.checks, 's2-' + i)}</div>`).join('');
+// Renders one card per layer. Each states the question it answers, who is able to act on it, and
+// whether it counts toward the headline — so a reader can tell at a glance which findings are
+// theirs and which belong to the host or the developer.
+function renderLayers(data) {
+  const layers = data.layers || [];
+  document.getElementById('layers').innerHTML = layers.map((layer, li) => {
+    const c = layer.counts || {};
+    const chips = [
+      c.FAIL ? `<span class="lchip lchip-FAIL">${c.FAIL} failing</span>` : '',
+      c.WARNING ? `<span class="lchip lchip-WARNING">${c.WARNING} to improve</span>` : '',
+      c.PASS ? `<span class="lchip lchip-PASS">${c.PASS} passing</span>` : '',
+      c.INCONCLUSIVE ? `<span class="lchip lchip-INCONCLUSIVE">${c.INCONCLUSIVE} unverified</span>` : '',
+      c.INFO ? `<span class="lchip lchip-INFO">${c.INFO} info</span>` : ''
+    ].filter(Boolean).join('');
 
-  const tabs4 = document.getElementById('section4-tabs');
-  const panels4 = document.getElementById('section4-panels');
-  tabs4.innerHTML = data.section4.pages.map((p, i) => `<button class="page-tab ${i === 0 ? 'active' : ''}" onclick="switchTab('s4', ${i})">${esc(shortUrl(p.url))}</button>`).join('');
-  panels4.innerHTML = data.section4.pages.map((p, i) => `<div class="page-panel ${i === 0 ? 'show' : ''}" id="s4-panel-${i}">${renderChecksTable(p.checks, 's4-' + i)}</div>`).join('');
+    // Checks that ran once for the whole site are listed plainly; those that ran per page are
+    // grouped under the page they belong to, so a multi-page scan stays readable.
+    const siteChecks = layer.checks.filter(k => !k.page);
+    const pageUrls = [...new Set(layer.checks.filter(k => k.page).map(k => k.page))];
 
-  const tabs3 = document.getElementById('section3-tabs');
-  const panels3 = document.getElementById('section3-panels');
-  tabs3.innerHTML = data.section3.perPage.map((p, i) => `<button class="page-tab ${i === 0 ? 'active' : ''}" onclick="switchTab('s3', ${i})">${esc(shortUrl(p.url))}</button>`).join('');
-  panels3.innerHTML = data.section3.perPage.map((p, i) => `<div class="page-panel ${i === 0 ? 'show' : ''}" id="s3-panel-${i}">${renderChecksTable(p.checks, 's3-' + i)}</div>`).join('');
+    const perPage = pageUrls.map((u, pi) => `
+      <div class="lpage">
+        <div class="lpage-url">${esc(shortUrl(u))}</div>
+        ${renderChecksTable(layer.checks.filter(k => k.page === u), 'L' + li + 'p' + pi)}
+      </div>`).join('');
 
-  const bp = data.section3.boilerplate;
-  document.getElementById('boilerplate-block').innerHTML = `
-    <table class="checks"><thead><tr><th>Check</th><th>Status</th><th>Detail</th></tr></thead><tbody>
-      <tr><td class="chk-title">${esc(bp.title)}</td><td><span class="badge badge-${bp.status}">${bp.status}</span></td><td>${esc(bp.detail)}${bp.howToFix ? `<div class="how-to-fix"><b>How to fix:</b> ${esc(bp.howToFix)}</div>` : ''}</td></tr>
-    </tbody></table>`;
+    return `
+      <div class="card layer-card">
+        <div class="layer-head">
+          <div>
+            <div class="card-title">${esc(layer.title)}</div>
+            <div class="layer-q">${esc(layer.question)}</div>
+          </div>
+          <div class="layer-score">
+            <div class="ls-num">${layer.score === null ? '—' : layer.score}</div>
+            <div class="ls-lbl">${layer.scored ? 'counts toward score' : 'not in score'}</div>
+          </div>
+        </div>
+        <div class="card-caption">${esc(layer.summary)}</div>
+        <div class="layer-owner"><b>Who fixes this:</b> ${esc(layer.owner)}</div>
+        ${layer.scoringNote ? `<div class="layer-note">${esc(layer.scoringNote)}</div>` : ''}
+        <div class="lchips">${chips}</div>
+        ${siteChecks.length ? renderChecksTable(siteChecks, 'L' + li + 's') : ''}
+        ${perPage}
+      </div>`;
+  }).join('');
 }
 
 function shortUrl(u) {

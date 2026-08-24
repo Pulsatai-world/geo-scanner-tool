@@ -1,5 +1,6 @@
 import * as cheerio from 'cheerio';
 import robotsParser from 'robots-parser';
+import { LAYERS, CHECKS } from './check-registry.js';
 
 // ── User-agents under test ──
 // Deliberately includes GPTBot/ClaudeBot alongside a plain browser UA — this is the check that
@@ -1484,6 +1485,70 @@ function analyzeContentSpecificity(pages) {
   return { perPage, boilerplateCheck };
 }
 
+// ── Layer view ──
+// Regroups every check the scan produced into the three layers defined in the registry, so the
+// report is organised by the question each check answers and by who is able to act on it:
+// access is hosting and DNS, readability is the developer, substance is the content team.
+// The previous grouping mixed a missing <title> in with a thin About page, which left a reader
+// no way to see which parts of the report were even theirs to act on.
+//
+// Scoring is deliberately flat: every check counts equally inside its layer, and the two scored
+// layers count equally in the headline. Weighted models invite argument about the weights; a
+// stated rule anyone can recompute from the same page does not.
+function buildLayers(siteChecks, pages) {
+  const instances = [];
+  siteChecks.forEach(c => instances.push({ check: c, page: null }));
+  pages.forEach(p => (p.checks || []).forEach(c => instances.push({ check: c, page: p.url })));
+
+  return Object.values(LAYERS)
+    .sort((a, b) => a.order - b.order)
+    .map(layer => {
+      const mine = instances.filter(({ check }) => (CHECKS[check.id] || {}).layer === layer.id);
+      const scorable = mine.filter(({ check }) => SCORE_POINTS[check.status] !== undefined && (CHECKS[check.id] || {}).scored !== false);
+      const score = scorable.length
+        ? Math.round(scorable.reduce((sum, { check }) => sum + SCORE_POINTS[check.status], 0) / scorable.length)
+        : null;
+
+      const counts = { PASS: 0, WARNING: 0, FAIL: 0, INCONCLUSIVE: 0, INFO: 0 };
+      mine.forEach(({ check }) => { if (counts[check.status] !== undefined) counts[check.status]++; });
+
+      return {
+        id: layer.id,
+        title: layer.title,
+        question: layer.question,
+        summary: layer.summary,
+        owner: layer.owner,
+        scored: layer.scored,
+        scoringNote: layer.scoringNote,
+        score,
+        counts,
+        checksRun: mine.length,
+        checks: mine.map(({ check, page }) => ({
+          id: check.id,
+          title: check.title,
+          status: check.status,
+          detail: check.detail,
+          howToFix: check.howToFix,
+          page,
+          measures: (CHECKS[check.id] || {}).measures,
+          rule: (CHECKS[check.id] || {}).rule,
+          why: (CHECKS[check.id] || {}).why,
+          raw: check.raw
+        }))
+      };
+    });
+}
+
+// Any check the scan emitted that the registry does not describe. Surfaced rather than swallowed:
+// an undocumented check is one the published methodology does not cover, which is precisely the
+// drift the registry exists to prevent.
+function findUnregisteredChecks(siteChecks, pages) {
+  const ids = new Set();
+  siteChecks.forEach(c => ids.add(c.id));
+  pages.forEach(p => (p.checks || []).forEach(c => ids.add(c.id)));
+  return Array.from(ids).filter(id => !CHECKS[id]);
+}
+
 // ── Scoring ──
 
 const SCORE_POINTS = { PASS: 100, WARNING: 55, FAIL: 0 };
@@ -1510,7 +1575,32 @@ function averagePageScores(pages) {
 // meant infrastructure noise moved a number that is supposed to track on-page work.
 const ONPAGE_WEIGHTS = { onPage: 0.40, agenticBrowsing: 0.20, contentSpecificity: 0.40 };
 
-function computeScore(section1Checks, section2Pages, section4Pages, section3, pagesAnalyzed) {
+function computeScoreFromLayers(layers, section1Checks, pagesAnalyzed) {
+  const scoredLayers = layers.filter(l => l.scored && l.score !== null);
+  const overall = scoredLayers.length
+    ? Math.round(scoredLayers.reduce((sum, l) => sum + l.score, 0) / scoredLayers.length)
+    : null;
+  const blockers = section1Checks.filter(c => c.status === 'FAIL');
+  const unverified = section1Checks.filter(c => c.status === 'INCONCLUSIVE');
+  const byId = id => (layers.find(l => l.id === id) || {}).score ?? null;
+  return {
+    overall,
+    scored: overall !== null,
+    pagesAnalyzed,
+    sections: {
+      onPage: byId('readability'),
+      agenticBrowsing: byId('readability'),
+      contentSpecificity: byId('substance'),
+      crawlability: byId('access')
+    },
+    layers: layers.map(l => ({ id: l.id, title: l.title, score: l.score, scored: l.scored, counts: l.counts })),
+    blockers: { count: blockers.length, items: blockers.map(c => ({ id: c.id, title: c.title })) },
+    unverified: { count: unverified.length, items: unverified.map(c => ({ id: c.id, title: c.title })) },
+    rubricVersion: 4
+  };
+}
+
+function computeScoreLegacy(section1Checks, section2Pages, section4Pages, section3, pagesAnalyzed) {
   const crawlability = scoreChecks(section1Checks);
   const onPage = averagePageScores(section2Pages);
   const agenticBrowsing = averagePageScores(section4Pages);
@@ -1738,7 +1828,18 @@ export async function runScan({ url, extraPages }) {
   const section2Pages = analyzedPages.map(p => ({ url: p.url, title: p.title, metaDescription: p.metaDescription, schemaTypes: p.schemaTypes, headingInfo: p.headingInfo, canonical: p.canonical, og: p.og, images: p.images, wordCount: p.wordCount, checks: p.checks }));
   const section4Pages = analyzedPages.map(p => ({ url: p.url, checks: p.agenticChecks }));
 
-  const score = computeScore(section1Checks, section2Pages, section4Pages, section3, analyzedPages.length);
+  // Every check the scan produced, regrouped by the question it answers rather than by the
+  // internal section it happened to be computed in. This is the shape the report is built from.
+  const s3ByUrl = new Map(section3.perPage.map(p => [p.url, p.checks]));
+  const mergedPages = analyzedPages.map(p => ({
+    url: p.url,
+    checks: [...p.checks, ...p.agenticChecks, ...(s3ByUrl.get(p.url) || [])]
+  }));
+  const siteLevelChecks = [...section1Checks, section3.boilerplateCheck];
+
+  const layers = buildLayers(siteLevelChecks, mergedPages);
+  const unregisteredChecks = findUnregisteredChecks(siteLevelChecks, mergedPages);
+  const score = computeScoreFromLayers(layers, section1Checks, analyzedPages.length);
   const prioritizedFindings = buildPrioritizedFindings(section1Checks, pageDiscovery, section2Pages, section4Pages, section3);
 
   return {
@@ -1752,11 +1853,14 @@ export async function runScan({ url, extraPages }) {
       pagesAnalyzed: analyzedPages.length,
       pagesAttempted: pageFetches.length,
       unverifiedChecks: section1Checks.filter(c => c.status === 'INCONCLUSIVE').length,
+      unregisteredChecks,
       timeoutMs: FETCH_TIMEOUT_MS,
       maxConcurrency: MAX_CONCURRENT_FETCHES
     },
     skippedPages,
     score,
+    // Layer view — the organising structure for the report.
+    layers,
     section1: { title: 'Crawlability Layer', checks: section1Checks },
     pageDiscovery,
     section2: { title: 'On-Page GEO Signals', pages: section2Pages },
