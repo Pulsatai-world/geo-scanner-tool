@@ -7,3 +7,8 @@ node_modules
 # Local dev only (never deploy)
 .env
 deno.lock
+
+# generated scan reports
+geo-report-*.html
+geo-report-*.pdf
+geo-report-*.json

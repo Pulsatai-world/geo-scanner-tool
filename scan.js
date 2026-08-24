@@ -17,9 +17,17 @@
 //   node scan.js <url> --json report.json
 //   node scan.js <url> --html report.html --pdf report.pdf
 //   node scan.js <url> --pages /about,/services
+//   node scan.js <url> --pdf --style report   (branded print layout instead)
+//
+// Two report styles are available. The default matches the hosted tool exactly, because it
+// renders the result through index.html itself rather than imitating it. --style report uses the
+// standalone print layout in lib/report.js, which is denser and built for handing to a client.
 //
 import { runScan } from './netlify/functions/lib/scan-engine.js';
 import { buildReportHtml } from './lib/report.js';
+import { buildWebStyleHtml } from './lib/web-report.js';
+import { dirname, resolve as resolvePath } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
@@ -113,19 +121,32 @@ const STATUS_MARK = { PASS: 'ok  ', WARNING: 'warn', FAIL: 'FAIL', INCONCLUSIVE:
   const pdfOut = flag('pdf');
   if (htmlOut || pdfOut) {
     const htmlPath = typeof htmlOut === 'string' ? htmlOut : defaultName('html');
-    writeFileSync(htmlPath, buildReportHtml(result));
+    const style = flag('style');
+    const repoRoot = dirname(fileURLToPath(import.meta.url));
+    const markup = style === 'report'
+      ? buildReportHtml(result)
+      : buildWebStyleHtml(result, repoRoot);
+    writeFileSync(htmlPath, markup);
     console.log('HTML written:  ' + htmlPath);
 
     if (pdfOut) {
-      const pdfPath = typeof pdfOut === 'string' ? pdfOut : defaultName('pdf');
+      // Both paths are made absolute before they reach Chrome. Chrome resolves a relative
+      // --print-to-pdf against its own working directory rather than ours, so a relative path
+      // silently wrote the file somewhere else while this reported success.
+      const pdfPath = resolvePath(typeof pdfOut === 'string' ? pdfOut : defaultName('pdf')).replace(/\\/g, '/');
+      const absHtml = resolvePath(htmlPath).replace(/\\/g, '/');
       const chrome = CHROME_PATHS.find(p => existsSync(p));
       if (!chrome) {
         console.log('PDF skipped:   no Chrome or Edge found. Open the HTML and print to PDF instead.');
       } else {
-        const abs = htmlPath.startsWith('/') || /^[A-Za-z]:/.test(htmlPath) ? htmlPath : process.cwd().replace(/\\/g, '/') + '/' + htmlPath;
-        execFileSync(chrome, ['--headless', '--disable-gpu', '--no-pdf-header-footer',
-          `--print-to-pdf=${pdfPath}`, '--virtual-time-budget=15000', `file:///${abs}`], { stdio: 'ignore' });
-        console.log('PDF written:   ' + pdfPath);
+        try {
+          execFileSync(chrome, ['--headless', '--disable-gpu', '--no-pdf-header-footer',
+            `--print-to-pdf=${pdfPath}`, '--virtual-time-budget=15000', `file:///${absHtml}`], { stdio: 'ignore' });
+        } catch { /* fall through to the existence check, which reports the real outcome */ }
+        // Never claim the file was written without confirming it exists — Chrome can fail
+        // silently, and a missing report that was announced as written is worse than an error.
+        if (existsSync(pdfPath)) console.log('PDF written:   ' + pdfPath);
+        else console.log('PDF FAILED:    Chrome did not produce ' + pdfPath + '. Open the HTML above and print to PDF instead.');
       }
     }
   }
