@@ -1393,7 +1393,7 @@ function checkJsRendering($, mainText, html) {
 // Patterns are bilingual for the same reason the authority checks are: these are Spanish-language
 // client sites, and an English-only matcher would classify every page as generic content.
 const PAGE_TYPES = {
-  contact: { label: 'Contact', judgeDepth: false, patterns: /(^|\/)(contact|contacto|contactanos|cont[áa]ctanos|contact-us|get-in-touch)(\/|$|\.)/i },
+  contact: { label: 'Contact', labelEs: 'contacto', judgeDepth: false, patterns: /(^|\/)(contact|contacto|contactanos|cont[áa]ctanos|contact-us|get-in-touch)(\/|$|\.)/i },
   legal: { label: 'Legal / policy', labelEs: 'aviso legal o política', judgeDepth: false, patterns: /(^|\/)(privacy|privacidad|terms|terminos|t[ée]rminos|aviso-legal|legal|cookies|politica|pol[íi]tica|disclaimer)(\/|$|\.|-)/i },
   utility: { label: 'Utility', labelEs: 'utilidad', judgeDepth: false, patterns: /(^|\/)(thank-you|gracias|404|search|buscar|cart|carrito|checkout|login|acceder|sitemap)(\/|$|\.)/i },
   home: { label: 'Homepage', labelEs: 'portada', judgeDepth: true, patterns: null },
@@ -1615,7 +1615,7 @@ function checkContentDepth(wordCount, pageType) {
       title: t('Profundidad del contenido para ser citado', 'Content depth for citation'),
       status: 'INFO',
       detail: t(
-        `${wordCount} palabras. Es una página de ${pageType.labelEs.toLowerCase()}, de la que no se espera contenido citable: queda fuera de la evaluación de profundidad en lugar de suspender por ser breve.`,
+        `${wordCount} palabras. Es una página de ${(pageType.labelEs || pageType.label).toLowerCase()}, de la que no se espera contenido citable: queda fuera de la evaluación de profundidad en lugar de suspender por ser breve.`,
         `${wordCount} words. This is a ${pageType.label.toLowerCase()} page, which is not expected to carry citable depth — it is excluded from the depth assessment rather than failed for being short.`
       ),
       raw: { wordCount, pageType: pageType.id, judged: false }
@@ -1689,7 +1689,7 @@ function checkPageScope($, wordCount, pageType) {
       title: t('Alcance de la página: ¿debería dividirse?', 'Page scope — should this be split?'),
       status: 'INFO',
       detail: t(
-        `No se evalúa: una página de ${pageType.labelEs.toLowerCase()} tiene un único propósito por definición y nunca es candidata a dividirse.`,
+        `No se evalúa: una página de ${(pageType.labelEs || pageType.label).toLowerCase()} tiene un único propósito por definición y nunca es candidata a dividirse.`,
         `Not assessed — a ${pageType.label.toLowerCase()} page is single-purpose by design and is never a candidate for splitting.`
       ),
       raw: { pageType: pageType.id, judged: false }
