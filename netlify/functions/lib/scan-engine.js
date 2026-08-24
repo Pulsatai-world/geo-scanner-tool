@@ -1043,10 +1043,21 @@ function checkAuthorAttribution($, mainText) {
   const found = hasRelAuthor || hasPersonSchema || hasByline;
   return {
     id: 'author-attribution',
-    title: 'Author/credential attribution',
+    title: t('Autoría y credenciales', 'Author/credential attribution'),
     status: found ? 'PASS' : 'WARNING',
-    detail: found ? 'Author attribution found (byline, rel="author" link, and/or Person schema tied to authorship).' : 'No author attribution found — no byline, rel="author" link, or Person schema tied to authorship.',
-    howToFix: found ? undefined : 'Add named author attribution to the page — a byline, an author schema entry, or both. Named, credentialed sources are weighted more heavily by AI engines than unattributed corporate copy.',
+    detail: found
+      ? t(
+          'Se encuentra atribución de autoría (firma, enlace rel="author" o schema Person vinculado a la autoría).',
+          'Author attribution found (byline, rel="author" link, and/or Person schema tied to authorship).'
+        )
+      : t(
+          'No se encuentra atribución de autoría: ni firma, ni enlace rel="author", ni schema Person vinculado a la autoría.',
+          'No author attribution found — no byline, rel="author" link, or Person schema tied to authorship.'
+        ),
+    howToFix: found ? undefined : t(
+      'Añade autoría con nombre a la página: una firma, una entrada de autor en los datos estructurados, o ambas. Los motores dan más peso a las fuentes identificadas y con credenciales que a un texto corporativo sin autor.',
+      'Add named author attribution to the page — a byline, an author schema entry, or both. Named, credentialed sources are weighted more heavily by AI engines than unattributed corporate copy.'
+    ),
     raw: { hasRelAuthor, hasPersonSchema, hasByline }
   };
 }
@@ -1062,12 +1073,21 @@ function checkFirstWordsSpecificity(mainText) {
   const status = (entities.properNounCount >= 3 || entities.numberCount >= 3) ? 'PASS' : 'WARNING';
   return {
     id: 'first-250-specificity',
-    title: 'First-250-words specificity',
+    title: t('Especificidad de las primeras 250 palabras', 'First-250-words specificity'),
     status,
     detail: status === 'PASS'
-      ? `The first ~250 words contain ${entities.properNounCount} proper-noun-like phrase(s) and ${entities.numberCount} number(s) — specific detail appears early.`
-      : `The first ~250 words read as generic (${entities.properNounCount} proper nouns, ${entities.numberCount} numbers), even if the page has more specific content further down.`,
-    howToFix: status === 'PASS' ? undefined : 'Move your most specific, concrete details (names, numbers, credentials) into the first 250-300 words. AI extraction tools weight the beginning of a page\'s content more heavily than text buried further down.',
+      ? t(
+          `Las primeras ~250 palabras contienen ${entities.properNounCount} expresión(es) con aspecto de nombre propio y ${entities.numberCount} cifra(s): el detalle concreto aparece pronto.`,
+          `The first ~250 words contain ${entities.properNounCount} proper-noun-like phrase(s) and ${entities.numberCount} number(s) — specific detail appears early.`
+        )
+      : t(
+          `Las primeras ~250 palabras resultan genéricas (${entities.properNounCount} nombres propios, ${entities.numberCount} cifras), aunque más abajo la página tenga contenido más concreto.`,
+          `The first ~250 words read as generic (${entities.properNounCount} proper nouns, ${entities.numberCount} numbers), even if the page has more specific content further down.`
+        ),
+    howToFix: status === 'PASS' ? undefined : t(
+      'Lleva los datos más concretos y específicos (nombres, cifras, credenciales) a las primeras 250-300 palabras. Los sistemas de extracción dan más peso al inicio del contenido que al texto enterrado más abajo.',
+      'Move your most specific, concrete details (names, numbers, credentials) into the first 250-300 words. AI extraction tools weight the beginning of a page\'s content more heavily than text buried further down.'
+    ),
     raw: { wordsChecked: Math.min(words.length, 250), properNounCount: entities.properNounCount, numberCount: entities.numberCount }
   };
 }
@@ -1300,10 +1320,16 @@ function checkFreshness($, mainText) {
   if (!dates.length) {
     return {
       id: 'content-freshness',
-      title: 'Freshness signals',
+      title: t('Señales de actualidad', 'Freshness signals'),
       status: 'WARNING',
-      detail: `No machine-readable date found — no dateModified or datePublished in structured data, no <time> element, no article date metadata.${hasVisibleYear ? ' A year appears in the visible text, but not in a form a machine can read as a date.' : ''} The page's recency cannot be established, which puts it behind a competitor whose page is visibly current.`,
-      howToFix: 'Add dateModified (and datePublished where it applies) to the page\'s structured data, and mark visible dates up with a <time datetime="…"> element. Keep dateModified genuinely accurate — a date that never changes is worse than none, and one that changes without the content changing is worse still.',
+      detail: t(
+        `No se encuentra ninguna fecha legible por máquina: ni dateModified ni datePublished en los datos estructurados, ni elemento <time>, ni metadatos de fecha de artículo.${hasVisibleYear ? ' En el texto visible aparece un año, pero no en un formato que una máquina pueda interpretar como fecha.' : ''} No se puede establecer lo reciente que es la página, lo que la deja por detrás de un competidor cuya página sí se muestra actual.`,
+        `No machine-readable date found — no dateModified or datePublished in structured data, no <time> element, no article date metadata.${hasVisibleYear ? ' A year appears in the visible text, but not in a form a machine can read as a date.' : ''} The page's recency cannot be established, which puts it behind a competitor whose page is visibly current.`
+      ),
+      howToFix: t(
+        'Añade dateModified (y datePublished donde corresponda) a los datos estructurados de la página, y marca las fechas visibles con un elemento <time datetime="…">. Mantén dateModified realmente exacto: una fecha que nunca cambia es peor que ninguna, y una que cambia sin que cambie el contenido, todavía peor.',
+        'Add dateModified (and datePublished where it applies) to the page\'s structured data, and mark visible dates up with a <time datetime="…"> element. Keep dateModified genuinely accurate — a date that never changes is worse than none, and one that changes without the content changing is worse still.'
+      ),
       raw: { datesFound: 0, hasVisibleYear }
     };
   }
@@ -1313,12 +1339,21 @@ function checkFreshness($, mainText) {
   const status = ageDays <= 365 ? 'PASS' : 'WARNING';
   return {
     id: 'content-freshness',
-    title: 'Freshness signals',
+    title: t('Señales de actualidad', 'Freshness signals'),
     status,
     detail: status === 'PASS'
-      ? `Most recent machine-readable date is ${ageDays} day(s) old — the page declares its recency in a form engines can read.`
-      : `The most recent machine-readable date is ${ageDays} day(s) old (roughly ${Math.round(ageDays / 365)} year(s)). The markup is correct, but the content itself reads as stale.`,
-    howToFix: status === 'PASS' ? undefined : 'Review and genuinely update the content, then set dateModified to the real revision date. Refreshing the date without touching the content is detectable and counter-productive.',
+      ? t(
+          `La fecha legible por máquina más reciente tiene ${ageDays} día(s): la página declara su actualidad en un formato que los motores pueden leer.`,
+          `Most recent machine-readable date is ${ageDays} day(s) old — the page declares its recency in a form engines can read.`
+        )
+      : t(
+          `La fecha legible por máquina más reciente tiene ${ageDays} día(s), unos ${Math.round(ageDays / 365)} año(s). El marcado es correcto, pero el contenido en sí se lee como desactualizado.`,
+          `The most recent machine-readable date is ${ageDays} day(s) old (roughly ${Math.round(ageDays / 365)} year(s)). The markup is correct, but the content itself reads as stale.`
+        ),
+    howToFix: status === 'PASS' ? undefined : t(
+      'Revisa y actualiza el contenido de verdad, y después ajusta dateModified a la fecha real de la revisión. Cambiar la fecha sin tocar el contenido se detecta y resulta contraproducente.',
+      'Review and genuinely update the content, then set dateModified to the real revision date. Refreshing the date without touching the content is detectable and counter-productive.'
+    ),
     raw: { datesFound: dates.length, newestAgeDays: ageDays, newest: new Date(newest).toISOString().slice(0, 10) }
   };
 }
@@ -1504,8 +1539,6 @@ const AUTHORITY_PATTERNS = {
 
 function checkAuthoritySignals($, mainText) {
   const present = {};
-  const missing = [];
-
   present.namedPeople = AUTHORITY_PATTERNS.namedPeople.test(mainText) || $('[rel~="author"]').length > 0;
   present.clientEvidence = AUTHORITY_PATTERNS.clientEvidence.test(mainText);
   present.credentials = AUTHORITY_PATTERNS.credentials.test(mainText);
@@ -1522,27 +1555,37 @@ function checkAuthoritySignals($, mainText) {
   present.externalProfiles = hasSameAs || socialLinks > 0;
 
   const LABELS = {
-    namedPeople: 'named people (founders, team, or authors)',
-    clientEvidence: 'client evidence (case studies, testimonials, named clients)',
-    credentials: 'credentials (certifications, awards, memberships, years in business)',
-    physicalAddress: 'a physical address',
-    directContact: 'direct contact links (tel: / mailto:)',
-    externalProfiles: 'links to external profiles (sameAs, LinkedIn, etc.)'
+    namedPeople: { es: 'personas identificadas (fundadores, equipo o autores)', en: 'named people (founders, team, or authors)' },
+    clientEvidence: { es: 'pruebas de clientes (casos de éxito, testimonios, clientes con nombre)', en: 'client evidence (case studies, testimonials, named clients)' },
+    credentials: { es: 'credenciales (certificaciones, premios, asociaciones, años de actividad)', en: 'credentials (certifications, awards, memberships, years in business)' },
+    physicalAddress: { es: 'una dirección física', en: 'a physical address' },
+    directContact: { es: 'enlaces de contacto directo (tel: / mailto:)', en: 'direct contact links (tel: / mailto:)' },
+    externalProfiles: { es: 'enlaces a perfiles externos (sameAs, LinkedIn, etc.)', en: 'links to external profiles (sameAs, LinkedIn, etc.)' }
   };
-  Object.entries(LABELS).forEach(([k, label]) => { if (!present[k]) missing.push(label); });
+  const missingEs = []; const missingEn = [];
+  Object.entries(LABELS).forEach(([k, l]) => { if (!present[k]) { missingEs.push(l.es); missingEn.push(l.en); } });
   const score = Object.values(present).filter(Boolean).length;
   const total = Object.keys(LABELS).length;
-
   const status = score >= 5 ? 'PASS' : score >= 3 ? 'WARNING' : 'FAIL';
+
   return {
     id: 'authority-signals',
-    title: 'Authority & credibility signals',
+    title: t('Señales de autoridad y credibilidad', 'Authority & credibility signals'),
     status,
     detail: status === 'PASS'
-      ? `${score} of ${total} authority signals present. The page demonstrates a real, identifiable organisation behind it.`
-      : `Only ${score} of ${total} authority signals found. Missing: ${missing.join('; ')}. Generative engines strongly prefer sources that visibly belong to a real, accountable organisation — without these, the site reads as anonymous marketing copy regardless of how well it is built.`,
-    howToFix: status === 'PASS' ? undefined : `Add what is missing: ${missing.join('; ')}. Named people with roles and credentials, named clients with concrete outcomes, and explicit certifications or years in business are the signals that most reliably separate a citable source from generic copy — and they also give the content the specific facts it currently lacks.`,
-    raw: { present, missing, score, total, socialLinks, hasSameAsSchema: hasSameAs }
+      ? t(
+          `${score} de ${total} señales de autoridad presentes. La página demuestra que detrás hay una organización real e identificable.`,
+          `${score} of ${total} authority signals present. The page demonstrates a real, identifiable organisation behind it.`
+        )
+      : t(
+          `Solo ${score} de ${total} señales de autoridad. Faltan: ${missingEs.join('; ')}. Los motores generativos prefieren con claridad las fuentes que pertenecen visiblemente a una organización real y responsable; sin estas señales, el sitio se lee como publicidad anónima por bien construido que esté.`,
+          `Only ${score} of ${total} authority signals found. Missing: ${missingEn.join('; ')}. Generative engines strongly prefer sources that visibly belong to a real, accountable organisation — without these, the site reads as anonymous marketing copy regardless of how well it is built.`
+        ),
+    howToFix: status === 'PASS' ? undefined : t(
+      `Añade lo que falta: ${missingEs.join('; ')}. Personas con nombre, cargo y credenciales, clientes identificados con resultados concretos, y certificaciones o años de actividad explícitos son las señales que con más fiabilidad separan una fuente citable de un texto genérico. Además aportan al contenido los datos específicos que ahora le faltan.`,
+      `Add what is missing: ${missingEn.join('; ')}. Named people with roles and credentials, named clients with concrete outcomes, and explicit certifications or years in business are the signals that most reliably separate a citable source from generic copy — and they also give the content the specific facts it currently lacks.`
+    ),
+    raw: { present, missing: missingEn, score, total, socialLinks, hasSameAsSchema: hasSameAs }
   };
 }
 
@@ -1557,20 +1600,26 @@ function checkAnswerFormat($, mainText) {
   const definitionLists = $('dl').length;
   const structures = lists + tables * 5 + definitionLists * 3;
 
-  const signals = [];
-  if (questionHeadings.length) signals.push(`${questionHeadings.length} question-form heading(s)`);
-  if (lists) signals.push(`${lists} list item(s)`);
-  if (tables) signals.push(`${tables} table(s)`);
+  const sigEs = []; const sigEn = [];
+  if (questionHeadings.length) { sigEs.push(`${questionHeadings.length} encabezado(s) en forma de pregunta`); sigEn.push(`${questionHeadings.length} question-form heading(s)`); }
+  if (lists) { sigEs.push(`${lists} elemento(s) de lista`); sigEn.push(`${lists} list item(s)`); }
+  if (tables) { sigEs.push(`${tables} tabla(s)`); sigEn.push(`${tables} table(s)`); }
 
   const good = questionHeadings.length >= 2 || structures >= 12;
   return {
     id: 'answer-format',
-    title: 'Answer-shaped content',
+    title: t('Contenido con forma de respuesta', 'Answer-shaped content'),
     status: good ? 'PASS' : 'WARNING',
     detail: good
-      ? `Content is structured for extraction: ${signals.join(', ')}.`
-      : `Little extractable structure found${signals.length ? ` (only ${signals.join(', ')})` : ''}. The page is largely continuous prose, which is harder for an engine to lift a direct answer from than question-and-answer sections, lists or comparison tables.`,
-    howToFix: good ? undefined : 'Rewrite key sections as questions a customer would actually ask, with the answer stated directly in the first sentence beneath each. Add comparison tables and step lists where they fit — these are disproportionately favoured in AI answers, and they make the page more useful to read as well.',
+      ? t(`El contenido está estructurado para poder extraerse: ${sigEs.join(', ')}.`, `Content is structured for extraction: ${sigEn.join(', ')}.`)
+      : t(
+          `Apenas se encuentra estructura extraíble${sigEs.length ? ` (solo ${sigEs.join(', ')})` : ''}. La página es sobre todo prosa continua, de la que a un motor le cuesta más extraer una respuesta directa que de apartados de pregunta y respuesta, listas o tablas comparativas.`,
+          `Little extractable structure found${sigEn.length ? ` (only ${sigEn.join(', ')})` : ''}. The page is largely continuous prose, which is harder for an engine to lift a direct answer from than question-and-answer sections, lists or comparison tables.`
+        ),
+    howToFix: good ? undefined : t(
+      'Reescribe los apartados clave como preguntas que un cliente formularía de verdad, con la respuesta enunciada directamente en la primera frase de cada una. Añade tablas comparativas y listas de pasos donde encajen: los motores las favorecen de forma desproporcionada en sus respuestas, y además hacen la página más útil de leer.',
+      'Rewrite key sections as questions a customer would actually ask, with the answer stated directly in the first sentence beneath each. Add comparison tables and step lists where they fit — these are disproportionately favoured in AI answers, and they make the page more useful to read as well.'
+    ),
     raw: { questionHeadings: questionHeadings.slice(0, 8), questionHeadingCount: questionHeadings.length, listItems: lists, tables, definitionLists }
   };
 }
@@ -1745,14 +1794,23 @@ function analyzeContentSpecificity(pages) {
   const perPage = pages.map(p => {
     const entities = detectEntities(p.mainText);
     let status = 'PASS';
-    let detail = `${entities.properNounCount} proper-noun-like phrases, ${entities.numberCount} numbers, ${entities.yearCount} year references found in ${p.wordCount} words of main content.`;
+    let detail = t(
+      `${entities.properNounCount} expresiones con aspecto de nombre propio, ${entities.numberCount} cifras y ${entities.yearCount} referencias a años en ${p.wordCount} palabras de contenido principal.`,
+      `${entities.properNounCount} proper-noun-like phrases, ${entities.numberCount} numbers, ${entities.yearCount} year references found in ${p.wordCount} words of main content.`
+    );
     if (entities.properNounCount < 3 && entities.numberCount < 3) {
       status = 'WARNING';
-      detail = `Very few specific, citable facts detected (${entities.properNounCount} proper nouns, ${entities.numberCount} numbers) — content reads as generic. AI engines favor specific, citable content over boilerplate marketing copy.`;
+      detail = t(
+        `Se detectan muy pocos datos concretos y citables (${entities.properNounCount} nombres propios, ${entities.numberCount} cifras): el contenido se lee como genérico. Los motores prefieren contenido específico y citable frente al texto comercial de relleno.`,
+        `Very few specific, citable facts detected (${entities.properNounCount} proper nouns, ${entities.numberCount} numbers) — content reads as generic. AI engines favor specific, citable content over boilerplate marketing copy.`
+      );
     }
     return { url: p.url, entities, checks: [
       ...(p.depthChecks || []),
-      { id: 'entities', title: 'Named entity / specificity signal', status, detail, howToFix: status === 'PASS' ? undefined : 'Add more specific facts — real numbers, dates, named entities (people, places, product names) — rather than generic marketing language. AI engines favor citable, specific content over vague claims.', raw: entities },
+      { id: 'entities', title: t('Entidades nombradas y especificidad', 'Named entity / specificity signal'), status, detail, howToFix: status === 'PASS' ? undefined : t(
+        'Añade datos más concretos —cifras reales, fechas, entidades con nombre (personas, lugares, nombres de producto)— en lugar de lenguaje comercial genérico. Los motores prefieren contenido específico y citable frente a afirmaciones vagas.',
+        'Add more specific facts — real numbers, dates, named entities (people, places, product names) — rather than generic marketing language. AI engines favor citable, specific content over vague claims.'
+      ), raw: entities },
     ] };
   });
 
@@ -1768,15 +1826,26 @@ function analyzeContentSpecificity(pages) {
   }
   const boilerplateCheck = {
     id: 'boilerplate',
-    title: 'Boilerplate / templated content',
+    title: t('Contenido duplicado o de plantilla', 'Boilerplate / templated content'),
     // With fewer than two pages there is nothing to compare, so this cannot pass or fail. It
     // used to return PASS regardless, which handed a full-marks check to scans that analysed no
     // pages at all — inflating the total on exactly the runs that had measured the least.
     status: pages.length < 2 ? 'INCONCLUSIVE' : (boilerplatePairs.length ? 'WARNING' : 'PASS'),
     detail: boilerplatePairs.length
-      ? `${boilerplatePairs.length} page pair(s) share heavily overlapping content (${boilerplatePairs.map(p => p.similarity + '%').join(', ')}) — a sign of templated, low-value pages (this is exactly the pattern found in directory-listing-style sites).`
-      : (pages.length > 1 ? 'No significant content overlap detected between the scanned pages.' : 'Only one page was available to compare — automatic key-page discovery found no About/FAQ/Contact/Services/Blog page, and no additional pages were provided manually. Add pages via the Advanced section, or check that the site\'s navigation uses standard link text/URL patterns.'),
-    howToFix: boilerplatePairs.length ? 'Differentiate templated pages with unique, page-specific content — especially for directory/listing-style pages where a shared template can make every page nearly identical.' : undefined,
+      ? t(
+          `${boilerplatePairs.length} par(es) de páginas comparten contenido muy solapado (${boilerplatePairs.map(p => p.similarity + '%').join(', ')}), señal de páginas de plantilla con poco valor propio.`,
+          `${boilerplatePairs.length} page pair(s) share heavily overlapping content (${boilerplatePairs.map(p => p.similarity + '%').join(', ')}) — a sign of templated, low-value pages (this is exactly the pattern found in directory-listing-style sites).`
+        )
+      : (pages.length > 1
+          ? t('No se detecta solapamiento de contenido relevante entre las páginas analizadas.', 'No significant content overlap detected between the scanned pages.')
+          : t(
+              'Solo había una página con la que comparar: no se encontró sitemap ni páginas de Nosotros/FAQ/Contacto/Servicios/Blog enlazadas desde la navegación, ni se añadieron páginas a mano.',
+              'Only one page was available to compare — no sitemap and no About/FAQ/Contact/Services/Blog page linked from the navigation, and no additional pages were provided manually.'
+            )),
+    howToFix: boilerplatePairs.length ? t(
+      'Diferencia las páginas de plantilla con contenido propio y específico de cada una, sobre todo en páginas tipo listado o directorio, donde una plantilla compartida puede dejarlas casi idénticas.',
+      'Differentiate templated pages with unique, page-specific content — especially for directory/listing-style pages where a shared template can make every page nearly identical.'
+    ) : undefined,
     raw: { pairs: boilerplatePairs }
   };
 
