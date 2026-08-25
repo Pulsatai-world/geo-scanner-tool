@@ -97,6 +97,7 @@ h2.lt{font-family:var(--fd);font-size:22px;font-weight:700;color:var(--ink-950);
 .lsum{font-size:13.5px;color:var(--ink-600);margin:9px 0 4px;max-width:95ch}
 .lown{font-size:13px;color:var(--ink-600);margin-bottom:13px}
 .lown b{color:var(--ink-950)}
+.lintro{break-inside:avoid;page-break-inside:avoid}
 /* One block per check. A five-column table of prose cannot fit A4 portrait, and the reader
    should not have to switch their print dialog to landscape to read the document. */
 .checks{display:flex;flex-direction:column;gap:12px}
@@ -125,7 +126,9 @@ h2.lt{font-family:var(--fd);font-size:22px;font-weight:700;color:var(--ink-950);
   .chk-head{margin-bottom:7px;padding-bottom:6px}
   .chk-body{gap:4px 13px}
   /* Never strand a layer heading at the foot of a page. */
-  .lhead,.lsum,.lown,h1,h2,.principle h2{break-after:avoid;page-break-after:avoid}
+  .lintro{break-inside:avoid;page-break-inside:avoid;break-after:avoid;page-break-after:avoid}
+  h1,h2,.principle h2{break-after:avoid;page-break-after:avoid}
+  p,dd{orphans:3;widows:3}
   .principle{break-inside:avoid;page-break-inside:avoid}
   .layer{break-inside:auto;page-break-inside:auto}
   header{break-after:avoid}
@@ -154,6 +157,7 @@ footer{margin-top:44px;padding-top:16px;border-top:1px solid var(--ink-200);font
 
 ${layers.map(l => `
 <div class="layer">
+  <div class="lintro">
   <div class="lhead">
     <div>
       <h2 class="lt">${esc(L(l.title))}</h2>
@@ -166,6 +170,7 @@ ${layers.map(l => `
   </div>
   <p class="lsum">${esc(L(l.summary))}</p>
   <p class="lown"><b>${X('whoActs')}:</b> ${esc(L(l.owner))}</p>
+  </div>
   <div class="checks">${rows(l)}</div>
 </div>`).join('')}
 
