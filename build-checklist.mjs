@@ -54,7 +54,7 @@ h1{font-family:var(--fd);font-size:38px;font-weight:800;letter-spacing:-.025em;l
 .principle{background:var(--violet-50);border-left:4px solid var(--violet-600);border-radius:0 10px 10px 0;padding:18px 22px;margin:26px 0 34px}
 .principle h2{font-family:var(--fd);font-size:16px;margin:0 0 7px;color:var(--ink-950)}
 .principle p{margin:0 0 9px}.principle p:last-child{margin:0}
-.layer{margin-bottom:38px;page-break-inside:avoid}
+.layer{margin-bottom:38px;page-break-inside:auto}
 .lhead{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;border-bottom:1px solid var(--ink-200);padding-bottom:11px;margin-bottom:6px;flex-wrap:wrap}
 h2.lt{font-family:var(--fd);font-size:22px;font-weight:700;color:var(--ink-950);margin:0;letter-spacing:-.015em}
 .lq{font-size:15px;color:var(--violet-600);font-weight:600;margin-top:3px}
@@ -68,12 +68,30 @@ thead th{background:var(--ink-50);text-align:left;padding:9px 11px;font-family:v
 td{padding:11px;border-bottom:1px solid var(--ink-100);vertical-align:top}
 tr{page-break-inside:avoid}
 .n{font-family:var(--fm);color:var(--ink-400);width:26px;font-size:11px}
-.ck{width:19%}
+.ck{width:17%}
 .ck b{color:var(--ink-950);display:block;font-family:var(--fd);font-size:13px}
 .id{font-family:var(--fm);font-size:10px;color:var(--ink-400);display:block;margin-top:2px}
 .unscored{display:inline-block;margin-top:5px;font-family:var(--fm);font-size:9px;letter-spacing:.07em;text-transform:uppercase;background:var(--ink-100);color:var(--ink-600);padding:2px 7px;border-radius:99px}
-.rule{width:27%;color:var(--ink-950)}
-.why{width:27%;color:var(--ink-500)}
+.rule{width:29%;color:var(--ink-950)}
+.why{width:26%;color:var(--ink-500)}
+@media print{
+  /* The screen layout is wider than a printable A4 landscape page, which silently clipped the
+     right-hand column. In print the page decides the width. */
+  body{padding:0;font-size:9.4pt}
+  .wrap{max-width:none;width:100%}
+  h1{font-size:26pt}
+  .lede{font-size:11pt}
+  table{font-size:8.6pt}
+  td{padding:7px 8px}
+  thead th{padding:6px 8px;font-size:7.6pt}
+  /* Repeat the column headers when a layer runs past a page boundary. */
+  thead{display:table-header-group}
+  tr{page-break-inside:avoid}
+  .layer{page-break-inside:auto}
+  .lhead,.lsum,.lown,h1,h2,.principle h2{page-break-after:avoid}
+  .principle{page-break-inside:avoid}
+  header{page-break-after:avoid}
+}
 footer{margin-top:44px;padding-top:16px;border-top:1px solid var(--ink-200);font-family:var(--fm);font-size:10px;letter-spacing:.06em;color:var(--ink-400);display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px}
 </style></head><body><div class="wrap">
 
