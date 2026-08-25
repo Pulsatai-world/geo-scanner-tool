@@ -24,6 +24,8 @@ const TX = {
   statLayers: { es: 'Capas', en: 'Layers' },
   statScored: { es: 'Cuentan para la calificación', en: 'Contribute to the score' },
   statContext:{ es: 'Solo contexto, nunca califican', en: 'Context only, never scored' },
+  printHint:  { es: 'Para guardar en PDF: Ctrl+P, tamaño A4, orientación vertical, y desactiva «Encabezados y pies de página». Imprime desde esta pestaña, no desde un visor incrustado.', en: 'To save as PDF: Ctrl+P, A4, portrait, and switch off “Headers and footers”. Print from this tab, not from an embedded viewer.' },
+  otherLang:  { es: 'English version', en: 'Versión en español' },
   whyTitle:   { es: 'Por qué publicamos las reglas', en: 'Why the rules are published' },
   why1:       { es: 'La optimización para motores generativos es una máquina leyendo a otra. Un veredicto sobre una página debería, por tanto, poder reproducirlo cualquiera que tenga esa misma página delante: por eso cada revisión de abajo indica la regla exacta que la decide. No «el contenido debería tener valor», sino «por debajo de 300 palabras no cumple, por debajo de 600 marca atención».', en: 'Generative engine optimisation is one machine reading another. A verdict about a page should therefore be reproducible by anyone holding the same page — so every check below states the exact rule that decides it.' },
   why2:       { es: 'De ahí se siguen tres cosas. Dos análisis de un sitio web que no ha cambiado devuelven el mismo resultado, que es lo que permite medir el avance entre auditorías en lugar de contarlo de memoria. Nada depende del criterio de quien haya corrido el análisis. Y cuando un factor realmente no puede resolverse en remoto —lo más evidente, cualquier cosa detrás de la protección de bots de un CDN— se informa como <b>sin verificar</b> y queda fuera de la calificación, en lugar de suponerlo y presentarlo como un hecho.', en: 'Three things follow. Two scans of an unchanged site return the same result, which is what makes progress between audits measurable rather than anecdotal. Nothing rests on the judgement of whoever happened to run the scan. And where a factor genuinely cannot be settled remotely it is reported as <b>unverified</b> and excluded from the score entirely.' },
@@ -85,6 +87,9 @@ h1{font-family:var(--fd);font-size:38px;font-weight:800;letter-spacing:-.025em;l
 .stats{display:flex;gap:34px;margin-top:20px;flex-wrap:wrap}
 .stat .v{font-family:var(--fd);font-size:26px;font-weight:800;color:var(--violet-600);line-height:1}
 .stat .l{font-family:var(--fm);font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-400);margin-top:4px}
+.hint{display:flex;gap:16px;align-items:baseline;justify-content:space-between;flex-wrap:wrap;background:var(--ink-50);border:1px solid var(--ink-100);border-radius:9px;padding:11px 15px;margin:22px 0 0;font-size:12.5px;color:var(--ink-500)}
+.hint a{color:var(--violet-600);font-weight:600;text-decoration:none;white-space:nowrap}
+.hint a:hover{text-decoration:underline}
 .principle{background:var(--violet-50);border-left:4px solid var(--violet-600);border-radius:0 10px 10px 0;padding:18px 22px;margin:26px 0 34px}
 .principle h2{font-family:var(--fd);font-size:16px;margin:0 0 7px;color:var(--ink-950)}
 .principle p{margin:0 0 9px}.principle p:last-child{margin:0}
@@ -132,6 +137,7 @@ h2.lt{font-family:var(--fd);font-size:22px;font-weight:700;color:var(--ink-950);
   .principle{break-inside:avoid;page-break-inside:avoid}
   .layer{break-inside:auto;page-break-inside:auto}
   header{break-after:avoid}
+  .hint{display:none}
 }
 footer{margin-top:44px;padding-top:16px;border-top:1px solid var(--ink-200);font-family:var(--fm);font-size:10px;letter-spacing:.06em;color:var(--ink-400);display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px}
 </style></head><body><div class="wrap">
@@ -147,6 +153,11 @@ footer{margin-top:44px;padding-top:16px;border-top:1px solid var(--ink-200);font
     <div class="stat"><div class="v">${total - scoredCount}</div><div class="l">${X('statContext')}</div></div>
   </div>
 </header>
+
+<div class="hint">
+  <span>${X('printHint')}</span>
+  <a href="${lang === 'es' ? 'checklist-en.html' : 'checklist-es.html'}">${X('otherLang')} →</a>
+</div>
 
 <div class="principle">
   <h2>${X('whyTitle')}</h2>

@@ -1,0 +1,615 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8">
+<title>Metodología GEO — Qué revisamos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+:root{--violet-600:#6d4fe0;--violet-50:#f6f3fe;--violet-700:#4834b0;
+--emerald-500:#1ea97c;
+--ink-950:#08090c;--ink-700:#2a313d;--ink-600:#3d4653;--ink-500:#566172;--ink-400:#757f8f;
+--ink-200:#c3c8d0;--ink-100:#e3e6ea;--ink-50:#f4f6f8;
+--fd:"Montserrat","Helvetica Neue",Arial,sans-serif;--fb:"Manrope","Helvetica Neue",Arial,sans-serif;--fm:"JetBrains Mono",ui-monospace,Menlo,monospace}
+*{box-sizing:border-box}
+@page{size:A4;margin:18mm 14mm}
+body{font-family:var(--fb);color:var(--ink-700);margin:0;padding:0 28px 70px;background:#fff;font-size:14px;line-height:1.55;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.wrap{max-width:900px;margin:0 auto}
+header{padding:44px 0 22px;border-bottom:2.5px solid var(--ink-950);margin-bottom:26px}
+.brand{display:flex;align-items:center;gap:9px;font-family:var(--fm);font-size:11px;letter-spacing:.17em;text-transform:uppercase;color:var(--ink-500);font-weight:600;margin-bottom:14px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--emerald-500)}
+h1{font-family:var(--fd);font-size:38px;font-weight:800;letter-spacing:-.025em;line-height:1.03;color:var(--ink-950);margin:0 0 8px;max-width:20ch}
+.lede{font-size:16px;color:var(--ink-500);max-width:70ch;margin:0}
+.stats{display:flex;gap:34px;margin-top:20px;flex-wrap:wrap}
+.stat .v{font-family:var(--fd);font-size:26px;font-weight:800;color:var(--violet-600);line-height:1}
+.stat .l{font-family:var(--fm);font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-400);margin-top:4px}
+.hint{display:flex;gap:16px;align-items:baseline;justify-content:space-between;flex-wrap:wrap;background:var(--ink-50);border:1px solid var(--ink-100);border-radius:9px;padding:11px 15px;margin:22px 0 0;font-size:12.5px;color:var(--ink-500)}
+.hint a{color:var(--violet-600);font-weight:600;text-decoration:none;white-space:nowrap}
+.hint a:hover{text-decoration:underline}
+.principle{background:var(--violet-50);border-left:4px solid var(--violet-600);border-radius:0 10px 10px 0;padding:18px 22px;margin:26px 0 34px}
+.principle h2{font-family:var(--fd);font-size:16px;margin:0 0 7px;color:var(--ink-950)}
+.principle p{margin:0 0 9px}.principle p:last-child{margin:0}
+.layer{margin-bottom:38px;page-break-inside:auto}
+.lhead{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;border-bottom:1px solid var(--ink-200);padding-bottom:11px;margin-bottom:6px;flex-wrap:wrap}
+h2.lt{font-family:var(--fd);font-size:22px;font-weight:700;color:var(--ink-950);margin:0;letter-spacing:-.015em}
+.lq{font-size:15px;color:var(--violet-600);font-weight:600;margin-top:3px}
+.lmeta{text-align:right;font-size:12px;color:var(--ink-500);flex:none}
+.lmeta b{display:block;font-family:var(--fm);font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-400);font-weight:600}
+.lsum{font-size:13.5px;color:var(--ink-600);margin:9px 0 4px;max-width:95ch}
+.lown{font-size:13px;color:var(--ink-600);margin-bottom:13px}
+.lown b{color:var(--ink-950)}
+.lintro{break-inside:avoid;page-break-inside:avoid}
+/* One block per check. A five-column table of prose cannot fit A4 portrait, and the reader
+   should not have to switch their print dialog to landscape to read the document. */
+.checks{display:flex;flex-direction:column;gap:12px}
+.chk{border:1px solid var(--ink-100);border-radius:9px;padding:13px 15px;background:#fff;break-inside:avoid;page-break-inside:avoid}
+.chk-head{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;margin-bottom:9px;padding-bottom:8px;border-bottom:1px solid var(--ink-100)}
+.chk-n{font-family:var(--fm);font-size:10.5px;color:var(--ink-400);min-width:16px}
+.chk-name{font-family:var(--fd);font-size:13.5px;font-weight:700;color:var(--ink-950);flex:1 1 auto}
+.chk-id{font-family:var(--fm);font-size:10px;color:var(--ink-400)}
+.chk-body{display:grid;grid-template-columns:max-content 1fr;gap:5px 16px;margin:0}
+.chk-body dt{font-family:var(--fm);font-size:8.6px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-400);font-weight:600;padding-top:2px;white-space:nowrap}
+.chk-body dd{margin:0;font-size:12px;line-height:1.5;color:var(--ink-600)}
+.chk-body dd.rule{color:var(--ink-950)}
+.chk-body dd.why{color:var(--ink-500)}
+@media (max-width:560px){ .chk-body{grid-template-columns:1fr;gap:2px} .chk-body dt{padding-top:7px} }
+.unscored{display:inline-block;margin-top:5px;font-family:var(--fm);font-size:9px;letter-spacing:.07em;text-transform:uppercase;background:var(--ink-100);color:var(--ink-600);padding:2px 7px;border-radius:99px}
+@media print{
+  /* Portrait by default, so nothing depends on the reader changing their print dialog. */
+  body{padding:0;font-size:10pt}
+  .wrap{max-width:none;width:100%}
+  h1{font-size:24pt}
+  .lede{font-size:11pt}
+  .chk{break-inside:avoid;page-break-inside:avoid}
+  .chk-head{break-after:avoid;page-break-after:avoid}
+  .chk-body dd{font-size:8.8pt;line-height:1.45}
+  .chk{padding:10px 12px}
+  .chk-head{margin-bottom:7px;padding-bottom:6px}
+  .chk-body{gap:4px 13px}
+  /* Never strand a layer heading at the foot of a page. */
+  .lintro{break-inside:avoid;page-break-inside:avoid;break-after:avoid;page-break-after:avoid}
+  h1,h2,.principle h2{break-after:avoid;page-break-after:avoid}
+  p,dd{orphans:3;widows:3}
+  .principle{break-inside:avoid;page-break-inside:avoid}
+  .layer{break-inside:auto;page-break-inside:auto}
+  header{break-after:avoid}
+  .hint{display:none}
+}
+footer{margin-top:44px;padding-top:16px;border-top:1px solid var(--ink-200);font-family:var(--fm);font-size:10px;letter-spacing:.06em;color:var(--ink-400);display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px}
+</style></head><body><div class="wrap">
+
+<header>
+  <div class="brand"><span class="dot"></span>Akore Labs · Metodología GEO</div>
+  <h1>Qué revisamos, y cómo se decide cada veredicto</h1>
+  <p class="lede">El conjunto completo de factores que evaluamos en un diagnóstico técnico GEO, con la regla explícita detrás de cada resultado.</p>
+  <div class="stats">
+    <div class="stat"><div class="v">35</div><div class="l">Factores revisados</div></div>
+    <div class="stat"><div class="v">3</div><div class="l">Capas</div></div>
+    <div class="stat"><div class="v">31</div><div class="l">Cuentan para la calificación</div></div>
+    <div class="stat"><div class="v">4</div><div class="l">Solo contexto, nunca califican</div></div>
+  </div>
+</header>
+
+<div class="hint">
+  <span>Para guardar en PDF: Ctrl+P, tamaño A4, orientación vertical, y desactiva «Encabezados y pies de página». Imprime desde esta pestaña, no desde un visor incrustado.</span>
+  <a href="checklist-en.html">English version →</a>
+</div>
+
+<div class="principle">
+  <h2>Por qué publicamos las reglas</h2>
+  <p>La optimización para motores generativos es una máquina leyendo a otra. Un veredicto sobre una página debería, por tanto, poder reproducirlo cualquiera que tenga esa misma página delante: por eso cada revisión de abajo indica la regla exacta que la decide. No «el contenido debería tener valor», sino «por debajo de 300 palabras no cumple, por debajo de 600 marca atención».</p>
+  <p>De ahí se siguen tres cosas. Dos análisis de un sitio web que no ha cambiado devuelven el mismo resultado, que es lo que permite medir el avance entre auditorías en lugar de contarlo de memoria. Nada depende del criterio de quien haya corrido el análisis. Y cuando un factor realmente no puede resolverse en remoto —lo más evidente, cualquier cosa detrás de la protección de bots de un CDN— se informa como <b>sin verificar</b> y queda fuera de la calificación, en lugar de suponerlo y presentarlo como un hecho.</p>
+  <p>Este documento se genera directamente del registro de revisiones del propio escáner. No puede describir una revisión que la herramienta no haga, ni omitir ninguna que sí haga.</p>
+</div>
+
+
+<div class="layer">
+  <div class="lintro">
+  <div class="lhead">
+    <div>
+      <h2 class="lt">Capa 1 — Acceso</h2>
+      <div class="lq">¿Pueden los sistemas de IA acceder al sitio web?</div>
+    </div>
+    <div class="lmeta">
+      <b>Revisiones</b>11
+      <b style="margin-top:7px">Calificación</b>se informa aparte
+    </div>
+  </div>
+  <p class="lsum">Si los rastreadores y los bots de recuperación pueden descargar el sitio web, y si algo los bloquea, los redirige o les limita la frecuencia. Si esto falla, nada de lo que viene después importa.</p>
+  <p class="lown"><b>Quién puede resolverlo:</b> Hosting, DNS y CDN: normalmente el proveedor de alojamiento o la plataforma, no el equipo web.</p>
+  </div>
+  <div class="checks">
+  <div class="chk">
+    <div class="chk-head">
+      <span class="chk-n">1</span>
+      <span class="chk-name">Accesibilidad del sitio web desde el escáner</span>
+      <span class="chk-id">site-reachability</span>
+      <span class="unscored">no califica</span>
+    </div>
+    <dl class="chk-body">
+      <dt>Qué se mide</dt><dd>Si alguna petición al servidor llega a completarse, y el motivo técnico cuando ninguna lo logra.</dd>
+      <dt>Regla</dt><dd class="rule">Se marca como SIN VERIFICAR cuando todos los user-agents fallan a nivel de conexión. Nunca es una falla del sitio web: una conexión rechazada casi siempre es la protección de red bloqueando la IP del escáner, mientras el sitio web atiende visitas con toda normalidad.</dd>
+      <dt>Por qué importa para ser citado</dt><dd class="why">Distingue «no lo pudimos medir» de «el sitio web está roto». Calificar un sitio web inaccesible convertiría un problema de nuestra red en un veredicto sobre el cliente.</dd>
+    </dl>
+  </div>
+  <div class="chk">
+    <div class="chk-head">
+      <span class="chk-n">2</span>
+      <span class="chk-name">Resolución con y sin www</span>
+      <span class="chk-id">host-variant</span>
+      
+    </div>
+    <dl class="chk-body">
+      <dt>Qué se mide</dt><dd>Si tanto el dominio sin www como el que lo lleva resuelven y sirven el sitio web.</dd>
+      <dt>Regla</dt><dd class="rule">NO CUMPLE cuando una forma resuelve y la otra no. El análisis continúa con la que sí responde.</dd>
+      <dt>Por qué importa para ser citado</dt><dd class="why">Quien escriba o enlace la forma que falta no llega a ningún lado, y los motores ven dos nombres de dominio en lugar de un solo sitio web consolidado.</dd>
+    </dl>
+  </div>
+  <div class="chk">
+    <div class="chk-head">
+      <span class="chk-n">3</span>
+      <span class="chk-name">Prueba de rastreo con varios user-agents</span>
+      <span class="chk-id">multi-ua</span>
+      
+    </div>
+    <dl class="chk-body">
+      <dt>Qué se mide</dt><dd>La portada solicitada con siete user-agents: un navegador, GPTBot, ClaudeBot, Googlebot, OAI-SearchBot, PerplexityBot y uno genérico.</dd>
+      <dt>Regla</dt><dd class="rule">NO CUMPLE únicamente cuando el servidor responde con un rechazo explícito (401, 402, 403, 405, 451) a un bot mientras la petición del navegador sí funciona. El límite de peticiones (429) y las conexiones cortadas dan ATENCIÓN: son pasajeros, y el propio análisis puede provocarlos.</dd>
+      <dt>Por qué importa para ser citado</dt><dd class="why">Detecta bloqueos por user-agent en el hosting. Exige un rechazo deliberado: un tiempo de espera agotado indica una conexión inestable, no una política.</dd>
+    </dl>
+  </div>
+  <div class="chk">
+    <div class="chk-head">
+      <span class="chk-n">4</span>
+      <span class="chk-name">Reglas de robots.txt para rastreadores de IA</span>
+      <span class="chk-id">robots-txt</span>
+      
+    </div>
+    <dl class="chk-body">
+      <dt>Qué se mide</dt><dd>18 identificadores de rastreadores evaluados contra robots.txt, separados en recuperación en vivo, entrenamiento de modelos e indexación de búsqueda.</dd>
+      <dt>Regla</dt><dd class="rule">NO CUMPLE si se bloquea cualquier rastreador de recuperación o de búsqueda (OAI-SearchBot, ChatGPT-User, Claude-User, Claude-SearchBot, PerplexityBot, Perplexity-User, Google-Extended, Googlebot, Bingbot, *). ATENCIÓN si solo se bloquean los de entrenamiento (GPTBot, ClaudeBot, CCBot, Applebot-Extended y similares).</dd>
+      <dt>Por qué importa para ser citado</dt><dd class="why">Bloquear la recuperación significa que el sitio web no puede citarse en ninguna respuesta. Bloquear el entrenamiento es una decisión legítima de licencia con un costo más lento, así que se señala en lugar de tratarse como falla. Google-Extended se destaca aparte porque la casilla de «bloquear IA» de Yoast y RankMath lo activa, dejando sitios web fuera de Gemini sin que sus dueños lo sepan.</dd>
+    </dl>
+  </div>
+  <div class="chk">
+    <div class="chk-head">
+      <span class="chk-n">5</span>
+      <span class="chk-name">Encabezado X-Robots-Tag</span>
+      <span class="chk-id">x-robots-tag</span>
+      
+    </div>
+    <dl class="chk-body">
+      <dt>Qué se mide</dt><dd>El encabezado de respuesta HTTP X-Robots-Tag.</dd>
+      <dt>Regla</dt><dd class="rule">NO CUMPLE si contiene noindex o none. ATENCIÓN si está presente sin esas directivas.</dd>
+      <dt>Por qué importa para ser citado</dt><dd class="why">Un bloqueo de indexación a nivel de servidor, puesto en .htaccess, en la configuración de nginx o por un plugin. No se ve en el código de la página y es fácil pasarlo por alto revisando a mano.</dd>
+    </dl>
+  </div>
+  <div class="chk">
+    <div class="chk-head">
+      <span class="chk-n">6</span>
+      <span class="chk-name">Meta etiqueta robots noindex</span>
+      <span class="chk-id">noindex-meta</span>
+      
+    </div>
+    <dl class="chk-body">
+      <dt>Qué se mide</dt><dd>Las etiquetas meta name=&quot;robots&quot; y meta name=&quot;googlebot&quot; dentro del head del documento.</dd>
+      <dt>Regla</dt><dd class="rule">NO CUMPLE si cualquiera de las dos contiene noindex.</dd>
+      <dt>Por qué importa para ser citado</dt><dd class="why">Suele quedarse encendido después de lanzar desde un entorno de pruebas, o por la casilla de WordPress que pide a los buscadores no indexar el sitio web.</dd>
+    </dl>
+  </div>
+  <div class="chk">
+    <div class="chk-head">
+      <span class="chk-n">7</span>
+      <span class="chk-name">Sitemap XML</span>
+      <span class="chk-id">sitemap</span>
+      
+    </div>
+    <dl class="chk-body">
+      <dt>Qué se mide</dt><dd>Las declaraciones Sitemap de robots.txt y después cinco rutas habituales: /sitemap.xml, /sitemap_index.xml, /wp-sitemap.xml, /sitemap-index.xml y /sitemap1.xml.</dd>
+      <dt>Regla</dt><dd class="rule">CUMPLE con un sitemap válido de 3 URLs o más. ATENCIÓN si no se encuentra ninguno, o si lista menos de 3 URLs. NO CUMPLE si existe pero está vacío o mal formado.</dd>
+      <dt>Por qué importa para ser citado</dt><dd class="why">Acelera el descubrimiento para todos los rastreadores. Revisar primero lo declarado evita reportar como «sin sitemap» a un sitio web que lo tiene bien configurado en otra ruta.</dd>
+    </dl>
+  </div>
+  <div class="chk">
+    <div class="chk-head">
+      <span class="chk-n">8</span>
+      <span class="chk-name">Tiempo de respuesta</span>
+      <span class="chk-id">response-time</span>
+      
+    </div>
+    <dl class="chk-body">
+      <dt>Qué se mide</dt><dd>La más rápida de dos peticiones aisladas a la portada, cada una lanzada sin nada más compitiendo por el servidor.</dd>
+      <dt>Regla</dt><dd class="rule">ATENCIÓN por encima de 2500 ms. Nunca NO CUMPLE: una muestra de tiempo no debería poder condicionar nada. SIN VERIFICAR si ninguna petición llegó a completarse.</dd>
+      <dt>Por qué importa para ser citado</dt><dd class="why">Los rastreadores abandonan los servidores lentos. Tomar dos muestras aisladas en vez de una mantiene la cifra lo bastante estable para compararla entre auditorías.</dd>
+    </dl>
+  </div>
+  <div class="chk">
+    <div class="chk-head">
+      <span class="chk-n">9</span>
+      <span class="chk-name">Protección frente a bots en la capa de red (CDN/WAF)</span>
+      <span class="chk-id">edge-protection</span>
+      <span class="unscored">no califica</span>
+    </div>
+    <dl class="chk-body">
+      <dt>Qué se mide</dt><dd>Huellas de CDN y WAF en los encabezados de respuesta: Cloudflare, Sucuri, Akamai, Fastly, Imperva.</dd>
+      <dt>Regla</dt><dd class="rule">Siempre SIN VERIFICAR cuando se detecta un proveedor. Estos servicios identifican a los bots verificados por rango de IP, no por la cadena de user-agent, así que probar user-agents no puede resolver si los rastreadores de IA tienen paso: la prueba la supera en cualquier caso.</dd>
+      <dt>Por qué importa para ser citado</dt><dd class="why">Es el punto ciego más claro del escáner, y se informa como tal en lugar de esconderlo tras un CUMPLE. Incluye la revisión manual exacta, y nombra la plataforma de alojamiento cuando el CDN es de ella y no del cliente.</dd>
+    </dl>
+  </div>
+  <div class="chk">
+    <div class="chk-head">
+      <span class="chk-n">10</span>
+      <span class="chk-name">Plataforma de alojamiento</span>
+      <span class="chk-id">hosting-platform</span>
+      <span class="unscored">no califica</span>
+    </div>
+    <dl class="chk-body">
+      <dt>Qué se mide</dt><dd>Huellas de la plataforma en la página y en los encabezados: Lovable, Wix, Squarespace, Framer, Webflow, Shopify y WordPress autoalojado.</dd>
+      <dt>Regla</dt><dd class="rule">Informativo. Nunca cuenta como cumplir ni como fallar.</dd>
+      <dt>Por qué importa para ser citado</dt><dd class="why">Define quién puede resolver qué. En una plataforma administrada el CDN es de la plataforma, así que recomendar cambiar ajustes de bots manda al cliente a buscar un panel que nunca va a tener.</dd>
+    </dl>
+  </div>
+  <div class="chk">
+    <div class="chk-head">
+      <span class="chk-n">11</span>
+      <span class="chk-name">llms.txt (estándar emergente)</span>
+      <span class="chk-id">llms-txt</span>
+      <span class="unscored">no califica</span>
+    </div>
+    <dl class="chk-body">
+      <dt>Qué se mide</dt><dd>La presencia del archivo /llms.txt.</dd>
+      <dt>Regla</dt><dd class="rule">Solo se informa si existe. Su ausencia jamás cuenta en contra del sitio web.</dd>
+      <dt>Por qué importa para ser citado</dt><dd class="why">Es una convención emergente que ningún motor importante se ha comprometido a respetar todavía. Se reporta como señal de adopción temprana, no como requisito.</dd>
+    </dl>
+  </div></div>
+</div>
+<div class="layer">
+  <div class="lintro">
+  <div class="lhead">
+    <div>
+      <h2 class="lt">Capa 2 — Legibilidad por máquina</h2>
+      <div class="lq">¿Puede una máquina interpretar la página y entender su estructura?</div>
+    </div>
+    <div class="lmeta">
+      <b>Revisiones</b>15
+      <b style="margin-top:7px">Calificación</b>cuenta para la calificación
+    </div>
+  </div>
+  <p class="lsum">Si el contenido existe en el HTML sin necesidad de JavaScript, y si los títulos, los metadatos, los datos estructurados, los encabezados y las regiones lo describen en un formato que una máquina pueda interpretar.</p>
+  <p class="lown"><b>Quién puede resolverlo:</b> Desarrollo o el propio CMS.</p>
+  </div>
+  <div class="checks">
+  <div class="chk">
+    <div class="chk-head">
+      <span class="chk-n">1</span>
+      <span class="chk-name">Contenido visible sin JavaScript</span>
+      <span class="chk-id">js-rendering</span>
+      
+    </div>
+    <dl class="chk-body">
+      <dt>Qué se mide</dt><dd>Palabras legibles en la respuesta del servidor, cantidad de scripts, y si el punto de montaje del framework llegó vacío.</dd>
+      <dt>Regla</dt><dd class="rule">NO CUMPLE si el servidor devuelve menos de 60 palabras junto con scripts, o si un punto de montaje (#root, #__next, #app) contiene menos de 30 palabras.</dd>
+      <dt>Por qué importa para ser citado</dt><dd class="why">La mayoría de los rastreadores de IA no ejecutan JavaScript. Si esto falla, el resto de resultados de la página no son confiables: las revisiones estarían leyendo un cascarón vacío, no la página real.</dd>
+    </dl>
+  </div>
+  <div class="chk">
+    <div class="chk-head">
+      <span class="chk-n">2</span>
+      <span class="chk-name">Etiqueta title</span>
+      <span class="chk-id">title</span>
+      
+    </div>
+    <dl class="chk-body">
+      <dt>Qué se mide</dt><dd>La presencia y la longitud del elemento title.</dd>
+      <dt>Regla</dt><dd class="rule">NO CUMPLE si falta. ATENCIÓN por encima de 60 caracteres.</dd>
+      <dt>Por qué importa para ser citado</dt><dd class="why">Es la declaración más contundente de qué trata una página, y la usan tanto los buscadores como los motores de IA.</dd>
+    </dl>
+  </div>
+  <div class="chk">
+    <div class="chk-head">
+      <span class="chk-n">3</span>
+      <span class="chk-name">Meta description</span>
+      <span class="chk-id">meta-description</span>
+      
+    </div>
+    <dl class="chk-body">
+      <dt>Qué se mide</dt><dd>La presencia y la longitud de la meta description.</dd>
+      <dt>Regla</dt><dd class="rule">NO CUMPLE si falta. ATENCIÓN por encima de 160 caracteres.</dd>
+      <dt>Por qué importa para ser citado</dt><dd class="why">Con frecuencia se toma tal cual como el resumen que acompaña a una cita.</dd>
+    </dl>
+  </div>
+  <div class="chk">
+    <div class="chk-head">
+      <span class="chk-n">4</span>
+      <span class="chk-name">Datos estructurados (Schema.org / JSON-LD)</span>
+      <span class="chk-id">schema</span>
+      
+    </div>
+    <dl class="chk-body">
+      <dt>Qué se mide</dt><dd>Los bloques JSON-LD, leyendo su @type y comparándolo contra ocho tipos habituales.</dd>
+      <dt>Regla</dt><dd class="rule">NO CUMPLE si no hay ningún dato estructurado. ATENCIÓN si faltan más de cuatro de los tipos habituales.</dd>
+      <dt>Por qué importa para ser citado</dt><dd class="why">Es la forma más directa de declarar hechos legibles por máquina sobre una entidad, y de las señales de mayor peso para conseguir citas.</dd>
+    </dl>
+  </div>
+  <div class="chk">
+    <div class="chk-head">
+      <span class="chk-n">5</span>
+      <span class="chk-name">Estructura de encabezados</span>
+      <span class="chk-id">headings</span>
+      
+    </div>
+    <dl class="chk-body">
+      <dt>Qué se mide</dt><dd>Cuántos elementos h1 hay y si se salta algún nivel de encabezado.</dd>
+      <dt>Regla</dt><dd class="rule">CUMPLE con exactamente un h1 y sin saltos de nivel. NO CUMPLE sin h1. ATENCIÓN en cualquier otro caso.</dd>
+      <dt>Por qué importa para ser citado</dt><dd class="why">Los encabezados son la forma en que una máquina divide la página en pasajes que puede recuperar por separado.</dd>
+    </dl>
+  </div>
+  <div class="chk">
+    <div class="chk-head">
+      <span class="chk-n">6</span>
+      <span class="chk-name">Jerarquía de encabezados (orden secuencial)</span>
+      <span class="chk-id">heading-hierarchy</span>
+      
+    </div>
+    <dl class="chk-body">
+      <dt>Qué se mide</dt><dd>Si los niveles de encabezado descienden sin huecos.</dd>
+      <dt>Regla</dt><dd class="rule">ATENCIÓN cuando se salta un nivel, por ejemplo de h1 directo a h3.</dd>
+      <dt>Por qué importa para ser citado</dt><dd class="why">Una jerarquía rota produce un índice engañoso del documento y difumina dónde termina un tema y empieza el siguiente.</dd>
+    </dl>
+  </div>
+  <div class="chk">
+    <div class="chk-head">
+      <span class="chk-n">7</span>
+      <span class="chk-name">Etiqueta canonical</span>
+      <span class="chk-id">canonical</span>
+      
+    </div>
+    <dl class="chk-body">
+      <dt>Qué se mide</dt><dd>La etiqueta link rel=&quot;canonical&quot; y si apunta a sí misma o a otro dominio.</dd>
+      <dt>Regla</dt><dd class="rule">NO CUMPLE si apunta a otro dominio. ATENCIÓN si no existe.</dd>
+      <dt>Por qué importa para ser citado</dt><dd class="why">Un canonical que quedó apuntando al entorno de pruebas después de una migración puede desaparecer por completo la página real.</dd>
+    </dl>
+  </div>
+  <div class="chk">
+    <div class="chk-head">
+      <span class="chk-n">8</span>
+      <span class="chk-name">Etiquetas Open Graph</span>
+      <span class="chk-id">open-graph</span>
+      
+    </div>
+    <dl class="chk-body">
+      <dt>Qué se mide</dt><dd>Las etiquetas og:title, og:description y og:type.</dd>
+      <dt>Regla</dt><dd class="rule">NO CUMPLE si faltan las tres. ATENCIÓN si falta alguna.</dd>
+      <dt>Por qué importa para ser citado</dt><dd class="why">Controlan cómo se representa la página al compartirla o al generar una vista previa, incluidas las herramientas que leen esos metadatos.</dd>
+    </dl>
+  </div>
+  <div class="chk">
+    <div class="chk-head">
+      <span class="chk-n">9</span>
+      <span class="chk-name">Cobertura de texto alternativo en imágenes</span>
+      <span class="chk-id">image-alt</span>
+      
+    </div>
+    <dl class="chk-body">
+      <dt>Qué se mide</dt><dd>Qué proporción de los elementos img llevan texto alternativo con contenido.</dd>
+      <dt>Regla</dt><dd class="rule">CUMPLE del 80% para arriba. ATENCIÓN desde el 40%. NO CUMPLE por debajo del 40%.</dd>
+      <dt>Por qué importa para ser citado</dt><dd class="why">El texto alternativo es la única descripción de una imagen que recibe un sistema que no la ve.</dd>
+    </dl>
+  </div>
+  <div class="chk">
+    <div class="chk-head">
+      <span class="chk-n">10</span>
+      <span class="chk-name">Presencia de la región &lt;main&gt;</span>
+      <span class="chk-id">main-landmark</span>
+      
+    </div>
+    <dl class="chk-body">
+      <dt>Qué se mide</dt><dd>La existencia de un elemento main o de role=&quot;main&quot;.</dd>
+      <dt>Regla</dt><dd class="rule">NO CUMPLE si no está.</dd>
+      <dt>Por qué importa para ser citado</dt><dd class="why">Le indica a un agente qué parte del documento es el contenido, a diferencia de la navegación y los elementos de plantilla.</dd>
+    </dl>
+  </div>
+  <div class="chk">
+    <div class="chk-head">
+      <span class="chk-n">11</span>
+      <span class="chk-name">Asociación de etiquetas en formularios</span>
+      <span class="chk-id">form-labels</span>
+      
+    </div>
+    <dl class="chk-body">
+      <dt>Qué se mide</dt><dd>Si los campos de formulario tienen etiqueta asociada o nombre accesible.</dd>
+      <dt>Regla</dt><dd class="rule">ATENCIÓN cuando los campos no lo tienen.</dd>
+      <dt>Por qué importa para ser citado</dt><dd class="why">Un agente de IA que llene un formulario por encargo del usuario solo puede identificar un campo por su nombre accesible.</dd>
+    </dl>
+  </div>
+  <div class="chk">
+    <div class="chk-head">
+      <span class="chk-n">12</span>
+      <span class="chk-name">Salud del árbol de accesibilidad (estimación compuesta)</span>
+      <span class="chk-id">a11y-tree-health</span>
+      
+    </div>
+    <dl class="chk-body">
+      <dt>Qué se mide</dt><dd>Un compuesto de los resultados de región principal, jerarquía de encabezados, etiquetas de formulario y texto alternativo.</dd>
+      <dt>Regla</dt><dd class="rule">Se deriva de las revisiones que lo componen.</dd>
+      <dt>Por qué importa para ser citado</dt><dd class="why">El árbol de accesibilidad es, a grandes rasgos, aquello por lo que navega un agente, así que su salud anticipa qué tan bien podrá operar la página.</dd>
+    </dl>
+  </div>
+  <div class="chk">
+    <div class="chk-head">
+      <span class="chk-n">13</span>
+      <span class="chk-name">Datos de contacto legibles por máquina</span>
+      <span class="chk-id">contact-machine-readable</span>
+      
+    </div>
+    <dl class="chk-body">
+      <dt>Qué se mide</dt><dd>Los enlaces tel: y mailto:, y el schema ContactPoint. Solo se aplica cuando la página muestra datos de contacto.</dd>
+      <dt>Regla</dt><dd class="rule">ATENCIÓN cuando los datos de contacto aparecen únicamente como texto plano.</dd>
+      <dt>Por qué importa para ser citado</dt><dd class="why">Permite que un agente actúe sobre los datos en lugar de solo leerlos.</dd>
+    </dl>
+  </div>
+  <div class="chk">
+    <div class="chk-head">
+      <span class="chk-n">14</span>
+      <span class="chk-name">Integridad de los datos estructurados</span>
+      <span class="chk-id">schema-completeness</span>
+      
+    </div>
+    <dl class="chk-body">
+      <dt>Qué se mide</dt><dd>Todas las propiedades realmente presentes en cada tipo de schema.org reconocido, contrastadas con las obligatorias y las recomendadas de ese tipo.</dd>
+      <dt>Regla</dt><dd class="rule">NO CUMPLE cuando a un tipo le falta una propiedad obligatoria (Organization sin name o url, LocalBusiness sin dirección). ATENCIÓN cuando falta la mayoría de las recomendadas. Solo se evalúan los tipos reconocidos.</dd>
+      <dt>Por qué importa para ser citado</dt><dd class="why">Que exista no prueba nada. Un bloque con solo @type y un nombre no le da al motor forma de vincular el marcado con una entidad real, y aun así supera una revisión de mera presencia igual que uno completo.</dd>
+    </dl>
+  </div>
+  <div class="chk">
+    <div class="chk-head">
+      <span class="chk-n">15</span>
+      <span class="chk-name">Coincidencia del schema FAQ con el contenido visible</span>
+      <span class="chk-id">faq-schema-match</span>
+      
+    </div>
+    <dl class="chk-body">
+      <dt>Qué se mide</dt><dd>Las preguntas del schema FAQPage contrastadas con el texto visible en la página. Solo se aplica donde existe ese schema.</dd>
+      <dt>Regla</dt><dd class="rule">CUMPLE cuando el 70% o más de las preguntas del schema aparecen en el contenido visible.</dd>
+      <dt>Por qué importa para ser citado</dt><dd class="why">Los datos estructurados que no reflejan lo que hay en la página pueden interpretarse como manipulación.</dd>
+    </dl>
+  </div></div>
+</div>
+<div class="layer">
+  <div class="lintro">
+  <div class="lhead">
+    <div>
+      <h2 class="lt">Capa 3 — Contenido y autoridad</h2>
+      <div class="lq">¿Hay aquí algo que merezca ser citado, y alguna razón para confiar en ello?</div>
+    </div>
+    <div class="lmeta">
+      <b>Revisiones</b>9
+      <b style="margin-top:7px">Calificación</b>cuenta para la calificación
+    </div>
+  </div>
+  <p class="lsum">Si la página tiene contenido suficientemente concreto y bien delimitado como para ser citada, y si demuestra que detrás hay una organización real y responsable. Una página puede superar todas las revisiones técnicas y aun así no citarse nunca, sencillamente porque no hay nada que citar.</p>
+  <p class="lown"><b>Quién puede resolverlo:</b> Contenido y marketing.</p>
+  </div>
+  <div class="checks">
+  <div class="chk">
+    <div class="chk-head">
+      <span class="chk-n">1</span>
+      <span class="chk-name">Profundidad del contenido para ser citado</span>
+      <span class="chk-id">content-depth</span>
+      
+    </div>
+    <dl class="chk-body">
+      <dt>Qué se mide</dt><dd>Las palabras de contenido principal, quitando navegación, encabezado y pie de página.</dd>
+      <dt>Regla</dt><dd class="rule">NO CUMPLE por debajo de 300 palabras. ATENCIÓN por debajo de 600. CUMPLE de 600 en adelante; a partir de 1200 se registra como amplio.</dd>
+      <dt>Por qué importa para ser citado</dt><dd class="why">Por debajo de unas 300 palabras no hay material suficiente para que un motor extraiga un pasaje útil. Una página puede rastrearse a la perfección y no citarse nunca, sencillamente porque no hay nada que valga la pena citar.</dd>
+    </dl>
+  </div>
+  <div class="chk">
+    <div class="chk-head">
+      <span class="chk-n">2</span>
+      <span class="chk-name">Alcance de la página: ¿debería dividirse?</span>
+      <span class="chk-id">page-scope</span>
+      
+    </div>
+    <dl class="chk-body">
+      <dt>Qué se mide</dt><dd>El contenido dividido en los encabezados h2 y medido por apartado, más si la navegación está hecha únicamente de anclas internas.</dd>
+      <dt>Regla</dt><dd class="rule">NO CUMPLE cuando la navegación es solo de anclas y abarca 3 temas o más, es decir, un sitio web de una sola página. ATENCIÓN con 4 apartados o más que promedien menos de 120 palabras.</dd>
+      <dt>Por qué importa para ser citado</dt><dd class="why">Los motores recuperan y citan a nivel de página. Los temas que comparten un mismo documento no pueden devolverse ante consultas sobre cada uno por separado, por bien escritos que estén.</dd>
+    </dl>
+  </div>
+  <div class="chk">
+    <div class="chk-head">
+      <span class="chk-n">3</span>
+      <span class="chk-name">Señales de autoridad y credibilidad</span>
+      <span class="chk-id">authority-signals</span>
+      
+    </div>
+    <dl class="chk-body">
+      <dt>Qué se mide</dt><dd>Seis señales, detectadas en español y en inglés: personas identificadas, pruebas de clientes, credenciales, dirección física, enlaces de contacto directo y enlaces a perfiles externos, incluido sameAs.</dd>
+      <dt>Regla</dt><dd class="rule">CUMPLE con 5 de 6 o más. ATENCIÓN con 3 o 4. NO CUMPLE con 2 o menos.</dd>
+      <dt>Por qué importa para ser citado</dt><dd class="why">Los motores prefieren las fuentes que visiblemente pertenecen a una organización real y responsable. Sin estas señales, el sitio web se lee como publicidad anónima por bien construido que esté.</dd>
+    </dl>
+  </div>
+  <div class="chk">
+    <div class="chk-head">
+      <span class="chk-n">4</span>
+      <span class="chk-name">Contenido con forma de respuesta</span>
+      <span class="chk-id">answer-format</span>
+      
+    </div>
+    <dl class="chk-body">
+      <dt>Qué se mide</dt><dd>Encabezados en forma de pregunta (en español y en inglés), elementos de lista, tablas y listas de definición.</dd>
+      <dt>Regla</dt><dd class="rule">CUMPLE con 2 o más encabezados en forma de pregunta, o con una puntuación de estructura de 12 o más: cada elemento de lista suma 1, cada tabla 5 y cada lista de definición 3.</dd>
+      <dt>Por qué importa para ser citado</dt><dd class="why">La recuperación empareja una pregunta con el pasaje que la responde. Los apartados de pregunta y respuesta, las listas y las tablas comparativas son mucho más fáciles de aprovechar que la prosa continua.</dd>
+    </dl>
+  </div>
+  <div class="chk">
+    <div class="chk-head">
+      <span class="chk-n">5</span>
+      <span class="chk-name">Entidades nombradas y especificidad</span>
+      <span class="chk-id">entities</span>
+      
+    </div>
+    <dl class="chk-body">
+      <dt>Qué se mide</dt><dd>Las expresiones con aspecto de nombre propio, las cifras y las referencias a años dentro del contenido principal.</dd>
+      <dt>Regla</dt><dd class="rule">ATENCIÓN cuando hay menos de 3 nombres propios y menos de 3 cifras.</dd>
+      <dt>Por qué importa para ser citado</dt><dd class="why">Lo que se cita son los datos concretos y verificables. El lenguaje comercial genérico no ofrece nada que citar.</dd>
+    </dl>
+  </div>
+  <div class="chk">
+    <div class="chk-head">
+      <span class="chk-n">6</span>
+      <span class="chk-name">Especificidad de las primeras 250 palabras</span>
+      <span class="chk-id">first-250-specificity</span>
+      
+    </div>
+    <dl class="chk-body">
+      <dt>Qué se mide</dt><dd>El mismo criterio de entidades aplicado únicamente a las primeras 250 palabras.</dd>
+      <dt>Regla</dt><dd class="rule">CUMPLE con 3 o más nombres propios, o 3 o más cifras, en la apertura.</dd>
+      <dt>Por qué importa para ser citado</dt><dd class="why">La extracción da más peso al inicio de la página que al material enterrado más abajo.</dd>
+    </dl>
+  </div>
+  <div class="chk">
+    <div class="chk-head">
+      <span class="chk-n">7</span>
+      <span class="chk-name">Autoría y credenciales</span>
+      <span class="chk-id">author-attribution</span>
+      
+    </div>
+    <dl class="chk-body">
+      <dt>Qué se mide</dt><dd>Las firmas, los enlaces rel=&quot;author&quot; y el schema Person vinculado a la autoría.</dd>
+      <dt>Regla</dt><dd class="rule">ATENCIÓN cuando no se encuentra ninguno.</dd>
+      <dt>Por qué importa para ser citado</dt><dd class="why">Las fuentes con nombre y credenciales pesan más que el texto corporativo sin autor.</dd>
+    </dl>
+  </div>
+  <div class="chk">
+    <div class="chk-head">
+      <span class="chk-n">8</span>
+      <span class="chk-name">Señales de actualidad</span>
+      <span class="chk-id">content-freshness</span>
+      
+    </div>
+    <dl class="chk-body">
+      <dt>Qué se mide</dt><dd>Las propiedades dateModified, datePublished y uploadDate de los datos estructurados, los elementos &lt;time datetime&gt; y los metadatos de fecha de artículo.</dd>
+      <dt>Regla</dt><dd class="rule">ATENCIÓN cuando no existe ninguna fecha legible por máquina, o cuando la más reciente tiene más de un año. CUMPLE dentro del año.</dd>
+      <dt>Por qué importa para ser citado</dt><dd class="why">Los motores dan peso a lo reciente. Una página sin fecha legible no puede evaluarse en ese aspecto, lo cual ya es una desventaja frente a un competidor cuya página sí se ve actual.</dd>
+    </dl>
+  </div>
+  <div class="chk">
+    <div class="chk-head">
+      <span class="chk-n">9</span>
+      <span class="chk-name">Contenido duplicado o de plantilla</span>
+      <span class="chk-id">boilerplate</span>
+      
+    </div>
+    <dl class="chk-body">
+      <dt>Qué se mide</dt><dd>La similitud por pares entre las páginas analizadas, comparando secuencias de cinco palabras.</dd>
+      <dt>Regla</dt><dd class="rule">ATENCIÓN por encima del 60% de similitud entre cualquier par. SIN VERIFICAR con menos de dos páginas, porque no hay con qué comparar.</dd>
+      <dt>Por qué importa para ser citado</dt><dd class="why">Las páginas casi idénticas compiten entre sí y delatan un uso de plantilla con poco valor propio.</dd>
+    </dl>
+  </div></div>
+</div>
+
+<footer>
+  <span>Akore Labs — Metodología de diagnóstico técnico GEO</span>
+  <span>Generado desde el registro de revisiones del escáner · 2026-08-25</span>
+</footer>
+</div></body></html>
