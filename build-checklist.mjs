@@ -6,9 +6,14 @@
 // written. A methodology document maintained by hand is accurate on the day it is written and
 // quietly wrong a month later.
 import { checksByLayer, CHECKS } from './netlify/functions/lib/check-registry.js';
+import { pick } from './netlify/functions/lib/i18n.js';
 import { writeFileSync } from 'node:fs';
 
 const out = process.argv[2] || 'geo-checklist.html';
+// Layer metadata became bilingual when the scanner did; without resolving it the headings
+// rendered as [object Object]. Per-check text is still English — see the note in the page.
+const lang = process.argv[3] === 'en' ? 'en' : 'es';
+const L = v => pick(v, lang);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const layers = checksByLayer();
 const total = Object.keys(CHECKS).length;
@@ -17,7 +22,7 @@ const scoredCount = Object.values(CHECKS).filter(c => c.scored !== false).length
 const rows = layer => layer.checks.map((c, i) => `
   <tr>
     <td class="n">${i + 1}</td>
-    <td class="ck"><b>${esc(c.title)}</b><span class="id">${esc(c.id)}</span>${c.scored === false ? '<span class="unscored">not scored</span>' : ''}</td>
+    <td class="ck"><b>${esc(L(c.title))}</b><span class="id">${esc(c.id)}</span>${c.scored === false ? '<span class="unscored">not scored</span>' : ''}</td>
     <td>${esc(c.measures)}</td>
     <td class="rule">${esc(c.rule)}</td>
     <td class="why">${esc(c.why)}</td>
@@ -95,16 +100,16 @@ ${layers.map(l => `
 <div class="layer">
   <div class="lhead">
     <div>
-      <h2 class="lt">${esc(l.title)}</h2>
-      <div class="lq">${esc(l.question)}</div>
+      <h2 class="lt">${esc(L(l.title))}</h2>
+      <div class="lq">${esc(L(l.question))}</div>
     </div>
     <div class="lmeta">
       <b>Checks</b>${l.checks.length}
       <b style="margin-top:7px">Scoring</b>${l.scored ? 'counts toward score' : 'reported separately'}
     </div>
   </div>
-  <p class="lsum">${esc(l.summary)}</p>
-  <p class="lown"><b>Who can act on it:</b> ${esc(l.owner)}</p>
+  <p class="lsum">${esc(L(l.summary))}</p>
+  <p class="lown"><b>Who can act on it:</b> ${esc(L(l.owner))}</p>
   <table>
     <thead><tr><th></th><th>Factor</th><th>What is measured</th><th>Rule</th><th>Why it matters for citation</th></tr></thead>
     <tbody>${rows(l)}</tbody>
