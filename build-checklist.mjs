@@ -74,7 +74,7 @@ const html = `<!doctype html>
 --ink-200:#c3c8d0;--ink-100:#e3e6ea;--ink-50:#f4f6f8;
 --fd:"Montserrat","Helvetica Neue",Arial,sans-serif;--fb:"Manrope","Helvetica Neue",Arial,sans-serif;--fm:"JetBrains Mono",ui-monospace,Menlo,monospace}
 *{box-sizing:border-box}
-@page{size:A4;margin:14mm}
+@page{size:A4;margin:18mm 14mm}
 body{font-family:var(--fb);color:var(--ink-700);margin:0;padding:0 28px 70px;background:#fff;font-size:14px;line-height:1.55;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .wrap{max-width:900px;margin:0 auto}
 header{padding:44px 0 22px;border-bottom:2.5px solid var(--ink-950);margin-bottom:26px}
