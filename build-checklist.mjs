@@ -14,6 +14,34 @@ const out = process.argv[2] || 'geo-checklist.html';
 // rendered as [object Object]. Per-check text is still English — see the note in the page.
 const lang = process.argv[3] === 'en' ? 'en' : 'es';
 const L = v => pick(v, lang);
+
+// Page chrome, written natively in Mexican Spanish rather than translated.
+const TX = {
+  brand:      { es: 'Akore Labs · Metodología GEO', en: 'Akore Labs · GEO Methodology' },
+  h1:         { es: 'Qué revisamos, y cómo se decide cada veredicto', en: 'What we check, and how each verdict is decided' },
+  lede:       { es: 'El conjunto completo de factores que evaluamos en un diagnóstico técnico GEO, con la regla explícita detrás de cada resultado.', en: 'The complete set of factors assessed in a GEO technical readiness scan, with the explicit rule behind every result.' },
+  statFactors:{ es: 'Factores revisados', en: 'Factors checked' },
+  statLayers: { es: 'Capas', en: 'Layers' },
+  statScored: { es: 'Cuentan para la calificación', en: 'Contribute to the score' },
+  statContext:{ es: 'Solo contexto, nunca califican', en: 'Context only, never scored' },
+  whyTitle:   { es: 'Por qué publicamos las reglas', en: 'Why the rules are published' },
+  why1:       { es: 'La optimización para motores generativos es una máquina leyendo a otra. Un veredicto sobre una página debería, por tanto, poder reproducirlo cualquiera que tenga esa misma página delante: por eso cada revisión de abajo indica la regla exacta que la decide. No «el contenido debería tener valor», sino «por debajo de 300 palabras no cumple, por debajo de 600 marca atención».', en: 'Generative engine optimisation is one machine reading another. A verdict about a page should therefore be reproducible by anyone holding the same page — so every check below states the exact rule that decides it.' },
+  why2:       { es: 'De ahí se siguen tres cosas. Dos análisis de un sitio web que no ha cambiado devuelven el mismo resultado, que es lo que permite medir el avance entre auditorías en lugar de contarlo de memoria. Nada depende del criterio de quien haya corrido el análisis. Y cuando un factor realmente no puede resolverse en remoto —lo más evidente, cualquier cosa detrás de la protección de bots de un CDN— se informa como <b>sin verificar</b> y queda fuera de la calificación, en lugar de suponerlo y presentarlo como un hecho.', en: 'Three things follow. Two scans of an unchanged site return the same result, which is what makes progress between audits measurable rather than anecdotal. Nothing rests on the judgement of whoever happened to run the scan. And where a factor genuinely cannot be settled remotely it is reported as <b>unverified</b> and excluded from the score entirely.' },
+  why3:       { es: 'Este documento se genera directamente del registro de revisiones del propio escáner. No puede describir una revisión que la herramienta no haga, ni omitir ninguna que sí haga.', en: 'This document is generated directly from the scanner own check registry. It cannot describe a check the tool does not run, or omit one it does.' },
+  colFactor:  { es: 'Factor', en: 'Factor' },
+  colMeasured:{ es: 'Qué se mide', en: 'What is measured' },
+  colRule:    { es: 'Regla', en: 'Rule' },
+  colWhy:     { es: 'Por qué importa para ser citado', en: 'Why it matters for citation' },
+  lblChecks:  { es: 'Revisiones', en: 'Checks' },
+  lblScoring: { es: 'Calificación', en: 'Scoring' },
+  counts:     { es: 'cuenta para la calificación', en: 'counts toward score' },
+  separate:   { es: 'se informa aparte', en: 'reported separately' },
+  whoActs:    { es: 'Quién puede resolverlo', en: 'Who can act on it' },
+  notScored:  { es: 'no califica', en: 'not scored' },
+  footer:     { es: 'Akore Labs — Metodología de diagnóstico técnico GEO', en: 'Akore Labs — GEO Technical Readiness methodology' },
+  generated:  { es: 'Generado desde el registro de revisiones del escáner', en: 'Generated from the scanner check registry' }
+};
+const X = k => (TX[k] || {})[lang] || (TX[k] || {}).es || k;
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const layers = checksByLayer();
 const total = Object.keys(CHECKS).length;
@@ -22,15 +50,15 @@ const scoredCount = Object.values(CHECKS).filter(c => c.scored !== false).length
 const rows = layer => layer.checks.map((c, i) => `
   <tr>
     <td class="n">${i + 1}</td>
-    <td class="ck"><b>${esc(L(c.title))}</b><span class="id">${esc(c.id)}</span>${c.scored === false ? '<span class="unscored">not scored</span>' : ''}</td>
-    <td>${esc(c.measures)}</td>
-    <td class="rule">${esc(c.rule)}</td>
-    <td class="why">${esc(c.why)}</td>
+    <td class="ck"><b>${esc(L(c.title))}</b><span class="id">${esc(c.id)}</span>${c.scored === false ? `<span class="unscored">${X('notScored')}</span>` : ''}</td>
+    <td>${esc(L(c.measures))}</td>
+    <td class="rule">${esc(L(c.rule))}</td>
+    <td class="why">${esc(L(c.why))}</td>
   </tr>`).join('');
 
 const html = `<!doctype html>
-<html lang="en"><head><meta charset="utf-8">
-<title>GEO Technical Readiness — What We Check</title>
+<html lang="${lang}"><head><meta charset="utf-8">
+<title>${lang === 'es' ? 'Metodología GEO — Qué revisamos' : 'GEO Technical Readiness — What We Check'}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
 <style>
@@ -96,22 +124,22 @@ footer{margin-top:44px;padding-top:16px;border-top:1px solid var(--ink-200);font
 </style></head><body><div class="wrap">
 
 <header>
-  <div class="brand"><span class="dot"></span>Akore Labs · GEO Methodology</div>
-  <h1>What we check, and how each verdict is decided</h1>
-  <p class="lede">The complete set of factors assessed in a GEO technical readiness scan, with the explicit rule behind every result.</p>
+  <div class="brand"><span class="dot"></span>${X('brand')}</div>
+  <h1>${X('h1')}</h1>
+  <p class="lede">${X('lede')}</p>
   <div class="stats">
-    <div class="stat"><div class="v">${total}</div><div class="l">Factors checked</div></div>
-    <div class="stat"><div class="v">${layers.length}</div><div class="l">Layers</div></div>
-    <div class="stat"><div class="v">${scoredCount}</div><div class="l">Contribute to the score</div></div>
-    <div class="stat"><div class="v">${total - scoredCount}</div><div class="l">Context only, never scored</div></div>
+    <div class="stat"><div class="v">${total}</div><div class="l">${X('statFactors')}</div></div>
+    <div class="stat"><div class="v">${layers.length}</div><div class="l">${X('statLayers')}</div></div>
+    <div class="stat"><div class="v">${scoredCount}</div><div class="l">${X('statScored')}</div></div>
+    <div class="stat"><div class="v">${total - scoredCount}</div><div class="l">${X('statContext')}</div></div>
   </div>
 </header>
 
 <div class="principle">
-  <h2>Why the rules are published</h2>
-  <p>Generative engine optimisation is one machine reading another. A verdict about a page should therefore be reproducible by anyone holding the same page — so every check below states the exact rule that decides it. Not &ldquo;the content should be substantial&rdquo;, but &ldquo;under 300 words fails, under 600 warns&rdquo;.</p>
-  <p>Three things follow. Two scans of an unchanged site return the same result, which is what makes progress between audits measurable rather than anecdotal. Nothing rests on the judgement of whoever happened to run the scan. And where a factor genuinely cannot be settled remotely — anything behind a CDN&rsquo;s bot protection, most obviously — it is reported as <b>unverified</b> and excluded from the score entirely, rather than guessed at and presented as fact.</p>
-  <p>This document is generated directly from the scanner&rsquo;s own check registry. It cannot describe a check the tool does not run, or omit one it does.</p>
+  <h2>${X('whyTitle')}</h2>
+  <p>${X('why1')}</p>
+  <p>${X('why2')}</p>
+  <p>${X('why3')}</p>
 </div>
 
 ${layers.map(l => `
@@ -122,21 +150,21 @@ ${layers.map(l => `
       <div class="lq">${esc(L(l.question))}</div>
     </div>
     <div class="lmeta">
-      <b>Checks</b>${l.checks.length}
-      <b style="margin-top:7px">Scoring</b>${l.scored ? 'counts toward score' : 'reported separately'}
+      <b>${X('lblChecks')}</b>${l.checks.length}
+      <b style="margin-top:7px">${X('lblScoring')}</b>${l.scored ? X('counts') : X('separate')}
     </div>
   </div>
   <p class="lsum">${esc(L(l.summary))}</p>
-  <p class="lown"><b>Who can act on it:</b> ${esc(L(l.owner))}</p>
+  <p class="lown"><b>${X('whoActs')}:</b> ${esc(L(l.owner))}</p>
   <table>
-    <thead><tr><th></th><th>Factor</th><th>What is measured</th><th>Rule</th><th>Why it matters for citation</th></tr></thead>
+    <thead><tr><th></th><th>${X('colFactor')}</th><th>${X('colMeasured')}</th><th>${X('colRule')}</th><th>${X('colWhy')}</th></tr></thead>
     <tbody>${rows(l)}</tbody>
   </table>
 </div>`).join('')}
 
 <footer>
-  <span>Akore Labs — GEO Technical Readiness methodology</span>
-  <span>Generated from the scanner check registry · ${new Date().toISOString().slice(0, 10)}</span>
+  <span>${X('footer')}</span>
+  <span>${X('generated')} · ${new Date().toISOString().slice(0, 10)}</span>
 </footer>
 </div></body></html>`;
 
