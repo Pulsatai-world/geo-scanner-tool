@@ -48,13 +48,19 @@ const total = Object.keys(CHECKS).length;
 const scoredCount = Object.values(CHECKS).filter(c => c.scored !== false).length;
 
 const rows = layer => layer.checks.map((c, i) => `
-  <tr>
-    <td class="n">${i + 1}</td>
-    <td class="ck"><b>${esc(L(c.title))}</b><span class="id">${esc(c.id)}</span>${c.scored === false ? `<span class="unscored">${X('notScored')}</span>` : ''}</td>
-    <td>${esc(L(c.measures))}</td>
-    <td class="rule">${esc(L(c.rule))}</td>
-    <td class="why">${esc(L(c.why))}</td>
-  </tr>`).join('');
+  <div class="chk">
+    <div class="chk-head">
+      <span class="chk-n">${i + 1}</span>
+      <span class="chk-name">${esc(L(c.title))}</span>
+      <span class="chk-id">${esc(c.id)}</span>
+      ${c.scored === false ? `<span class="unscored">${X('notScored')}</span>` : ''}
+    </div>
+    <dl class="chk-body">
+      <dt>${X('colMeasured')}</dt><dd>${esc(L(c.measures))}</dd>
+      <dt>${X('colRule')}</dt><dd class="rule">${esc(L(c.rule))}</dd>
+      <dt>${X('colWhy')}</dt><dd class="why">${esc(L(c.why))}</dd>
+    </dl>
+  </div>`).join('');
 
 const html = `<!doctype html>
 <html lang="${lang}"><head><meta charset="utf-8">
@@ -68,9 +74,9 @@ const html = `<!doctype html>
 --ink-200:#c3c8d0;--ink-100:#e3e6ea;--ink-50:#f4f6f8;
 --fd:"Montserrat","Helvetica Neue",Arial,sans-serif;--fb:"Manrope","Helvetica Neue",Arial,sans-serif;--fm:"JetBrains Mono",ui-monospace,Menlo,monospace}
 *{box-sizing:border-box}
-@page{size:A4 landscape;margin:12mm}
+@page{size:A4;margin:14mm}
 body{font-family:var(--fb);color:var(--ink-700);margin:0;padding:0 28px 70px;background:#fff;font-size:14px;line-height:1.55;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-.wrap{max-width:1180px;margin:0 auto}
+.wrap{max-width:900px;margin:0 auto}
 header{padding:44px 0 22px;border-bottom:2.5px solid var(--ink-950);margin-bottom:26px}
 .brand{display:flex;align-items:center;gap:9px;font-family:var(--fm);font-size:11px;letter-spacing:.17em;text-transform:uppercase;color:var(--ink-500);font-weight:600;margin-bottom:14px}
 .dot{width:8px;height:8px;border-radius:50%;background:var(--emerald-500)}
@@ -91,34 +97,38 @@ h2.lt{font-family:var(--fd);font-size:22px;font-weight:700;color:var(--ink-950);
 .lsum{font-size:13.5px;color:var(--ink-600);margin:9px 0 4px;max-width:95ch}
 .lown{font-size:13px;color:var(--ink-600);margin-bottom:13px}
 .lown b{color:var(--ink-950)}
-table{width:100%;border-collapse:collapse;font-size:12.5px}
-thead th{background:var(--ink-50);text-align:left;padding:9px 11px;font-family:var(--fm);font-size:9.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-500);border-bottom:1px solid var(--ink-200);font-weight:600}
-td{padding:11px;border-bottom:1px solid var(--ink-100);vertical-align:top}
-tr{page-break-inside:avoid}
-.n{font-family:var(--fm);color:var(--ink-400);width:26px;font-size:11px}
-.ck{width:17%}
-.ck b{color:var(--ink-950);display:block;font-family:var(--fd);font-size:13px}
-.id{font-family:var(--fm);font-size:10px;color:var(--ink-400);display:block;margin-top:2px}
+/* One block per check. A five-column table of prose cannot fit A4 portrait, and the reader
+   should not have to switch their print dialog to landscape to read the document. */
+.checks{display:flex;flex-direction:column;gap:12px}
+.chk{border:1px solid var(--ink-100);border-radius:9px;padding:13px 15px;background:#fff;break-inside:avoid;page-break-inside:avoid}
+.chk-head{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;margin-bottom:9px;padding-bottom:8px;border-bottom:1px solid var(--ink-100)}
+.chk-n{font-family:var(--fm);font-size:10.5px;color:var(--ink-400);min-width:16px}
+.chk-name{font-family:var(--fd);font-size:13.5px;font-weight:700;color:var(--ink-950);flex:1 1 auto}
+.chk-id{font-family:var(--fm);font-size:10px;color:var(--ink-400)}
+.chk-body{display:grid;grid-template-columns:max-content 1fr;gap:5px 16px;margin:0}
+.chk-body dt{font-family:var(--fm);font-size:8.6px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-400);font-weight:600;padding-top:2px;white-space:nowrap}
+.chk-body dd{margin:0;font-size:12px;line-height:1.5;color:var(--ink-600)}
+.chk-body dd.rule{color:var(--ink-950)}
+.chk-body dd.why{color:var(--ink-500)}
+@media (max-width:560px){ .chk-body{grid-template-columns:1fr;gap:2px} .chk-body dt{padding-top:7px} }
 .unscored{display:inline-block;margin-top:5px;font-family:var(--fm);font-size:9px;letter-spacing:.07em;text-transform:uppercase;background:var(--ink-100);color:var(--ink-600);padding:2px 7px;border-radius:99px}
-.rule{width:29%;color:var(--ink-950)}
-.why{width:26%;color:var(--ink-500)}
 @media print{
-  /* The screen layout is wider than a printable A4 landscape page, which silently clipped the
-     right-hand column. In print the page decides the width. */
-  body{padding:0;font-size:9.4pt}
+  /* Portrait by default, so nothing depends on the reader changing their print dialog. */
+  body{padding:0;font-size:10pt}
   .wrap{max-width:none;width:100%}
-  h1{font-size:26pt}
+  h1{font-size:24pt}
   .lede{font-size:11pt}
-  table{font-size:8.6pt}
-  td{padding:7px 8px}
-  thead th{padding:6px 8px;font-size:7.6pt}
-  /* Repeat the column headers when a layer runs past a page boundary. */
-  thead{display:table-header-group}
-  tr{page-break-inside:avoid}
-  .layer{page-break-inside:auto}
-  .lhead,.lsum,.lown,h1,h2,.principle h2{page-break-after:avoid}
-  .principle{page-break-inside:avoid}
-  header{page-break-after:avoid}
+  .chk{break-inside:avoid;page-break-inside:avoid}
+  .chk-head{break-after:avoid;page-break-after:avoid}
+  .chk-body dd{font-size:8.8pt;line-height:1.45}
+  .chk{padding:10px 12px}
+  .chk-head{margin-bottom:7px;padding-bottom:6px}
+  .chk-body{gap:4px 13px}
+  /* Never strand a layer heading at the foot of a page. */
+  .lhead,.lsum,.lown,h1,h2,.principle h2{break-after:avoid;page-break-after:avoid}
+  .principle{break-inside:avoid;page-break-inside:avoid}
+  .layer{break-inside:auto;page-break-inside:auto}
+  header{break-after:avoid}
 }
 footer{margin-top:44px;padding-top:16px;border-top:1px solid var(--ink-200);font-family:var(--fm);font-size:10px;letter-spacing:.06em;color:var(--ink-400);display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px}
 </style></head><body><div class="wrap">
@@ -156,10 +166,7 @@ ${layers.map(l => `
   </div>
   <p class="lsum">${esc(L(l.summary))}</p>
   <p class="lown"><b>${X('whoActs')}:</b> ${esc(L(l.owner))}</p>
-  <table>
-    <thead><tr><th></th><th>${X('colFactor')}</th><th>${X('colMeasured')}</th><th>${X('colRule')}</th><th>${X('colWhy')}</th></tr></thead>
-    <tbody>${rows(l)}</tbody>
-  </table>
+  <div class="checks">${rows(l)}</div>
 </div>`).join('')}
 
 <footer>
