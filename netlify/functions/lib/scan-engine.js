@@ -214,6 +214,24 @@ async function checkRobots(origin) {
       raw: { url: robotsUrl, errorKind: res.errorKind, errorCode: res.errorCode }
     };
   }
+  if (RATE_LIMIT_STATUSES.has(res.status)) {
+    // Rate limited, not absent. Saying "no rules, so every AI crawler is allowed" would be an
+    // assurance about crawler access that this scan has no basis for.
+    return {
+      id: 'robots-txt',
+      title: t('Reglas de robots.txt para rastreadores de IA', 'robots.txt AI crawler rules'),
+      status: 'INCONCLUSIVE',
+      detail: t(
+        `No se ha podido leer robots.txt: el servidor respondió HTTP ${res.status} (límite de peticiones). No sabemos qué reglas contiene, así que no se puede afirmar nada sobre el acceso de los rastreadores de IA.`,
+        `robots.txt could not be read — the server responded HTTP ${res.status} (rate limited). Its rules are unknown, so nothing can be concluded about AI crawler access.`
+      ),
+      howToFix: t(
+        'Vuelve a correr el análisis más tarde. Si se repite, el alojamiento está limitando la frecuencia de peticiones y conviene pedir que lo suban para los rastreadores de IA.',
+        'Re-run the scan later. If it persists, the host is rate limiting requests and it is worth asking them to raise the limit for AI crawlers.'
+      ),
+      raw: { url: robotsUrl, status: res.status }
+    };
+  }
   if (res.status >= 400) {
     return {
       id: 'robots-txt',
@@ -579,6 +597,25 @@ async function checkSitemap(origin, declaredSitemaps = []) {
   // so that is unverified rather than a missing-sitemap finding.
   if (transportFailures === attempts.length && attempts.length > 0) {
     return { id: 'sitemap', title: t('Sitemap XML', 'XML sitemap'), status: 'INCONCLUSIVE', detail: t('No se ha podido acceder a ninguna ubicación de sitemap: todas las peticiones a este servidor han fallado a nivel de conexión. Se desconoce si existe un sitemap.', 'Could not reach any sitemap location — every request to this origin failed at the connection level. Whether a sitemap exists is unknown.'), howToFix: t('No implica ninguna acción sobre el sitio web. Repite el escaneo, o abre la URL del sitemap a mano para confirmarlo.', 'No action implied for the site. Re-run the scan, or open the sitemap URL manually to confirm.'), raw: { attempts } };
+  }
+
+  // If every candidate was rate limited we never saw whether a sitemap exists.
+  const allRateLimited = attempts.length > 0 && attempts.every(a => RATE_LIMIT_STATUSES.has(a.status));
+  if (allRateLimited) {
+    return {
+      id: 'sitemap',
+      title: t('Sitemap XML', 'XML sitemap'),
+      status: 'INCONCLUSIVE',
+      detail: t(
+        `No se ha podido comprobar si hay sitemap: las ${attempts.length} ubicación(es) probadas respondieron con un límite de peticiones (HTTP 429/503). Puede que exista un sitemap y no hayamos podido verlo.`,
+        `Whether a sitemap exists could not be checked — all ${attempts.length} location(s) tried responded with a rate limit (HTTP 429/503). A sitemap may well exist and simply not have been reachable.`
+      ),
+      howToFix: t(
+        'Vuelve a correr el análisis más tarde, cuando haya pasado la ventana de espera del servidor.',
+        'Re-run the scan later, once the server has lifted its retry window.'
+      ),
+      raw: { attempts, declaredInRobots: declared, rateLimited: true }
+    };
   }
 
   return {
@@ -2602,8 +2639,12 @@ export async function runScan({ url, extraPages, maxPages }) {
     ...sitemapFetches.map(p => ({ url: p.url, html: p.text, ok: p.ok, status: p.status }))
   ];
 
-  const validPages = pageFetches.filter(p => p.ok && p.html);
-  const skippedPages = pageFetches.filter(p => !p.ok).map(p => ({ url: p.url, status: p.status }));
+  // A 429 or 404 body is not this site's content. Analysing one produces a page with no title,
+  // no meta description, no structured data and a handful of words — every one of which then gets
+  // reported as a fault of the site rather than of the scan.
+  const isReadable = p => p.ok && p.html && p.status >= 200 && p.status < 300;
+  const validPages = pageFetches.filter(isReadable);
+  const skippedPages = pageFetches.filter(p => !isReadable(p)).map(p => ({ url: p.url, status: p.status }));
 
   const analyzedPages = validPages.map(p => analyzePage(p.url, p.html));
   const section3 = analyzeContentSpecificity(analyzedPages);
