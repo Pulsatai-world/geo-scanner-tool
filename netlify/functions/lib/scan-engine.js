@@ -2744,3 +2744,92 @@ export async function runScan({ url, extraPages, maxPages }) {
     prioritizedFindings
   };
 }
+
+
+/**
+ * Analyse HTML that was captured by hand, for a site no server can fetch.
+ *
+ * Some sites refuse every request from a datacentre by IP range — Cloudflare bot management is
+ * the usual case — so no user-agent fallback reaches them. A person can still open the page in
+ * their own browser, and the on-page analysis needs nothing else: analyzePage() does no fetching.
+ * Layers 2 and 3 run exactly as they do on a fetched page, which is every check that counts
+ * toward the score.
+ *
+ * What this cannot do is Layer 1. Whether robots.txt admits GPTBot, whether the host rate-limits,
+ * whether a CDN refuses crawlers by IP — none of that is in the HTML, and none of it is guessed
+ * at here. It is reported as unverified, which is what that layer already does for such sites.
+ * A score from this path is therefore an on-page score, and the report says so.
+ */
+export function runScanFromHtml({ url, pages }) {
+  const supplied = (pages || [])
+    .map(p => ({ url: (p && p.url) || url, html: p && p.html }))
+    .filter(p => p.html && String(p.html).trim().length > 0);
+  if (!supplied.length) throw new Error('No se recibió HTML que analizar.');
+
+  const homepageUrl = supplied[0].url || url;
+  const analyzedPages = supplied.map(p => analyzePage(p.url, p.html));
+  const section3 = analyzeContentSpecificity(analyzedPages);
+
+  const section2Pages = analyzedPages.map(p => ({ url: p.url, title: p.title, metaDescription: p.metaDescription, schemaTypes: p.schemaTypes, headingInfo: p.headingInfo, canonical: p.canonical, og: p.og, images: p.images, wordCount: p.wordCount, checks: p.checks }));
+  const section4Pages = analyzedPages.map(p => ({ url: p.url, checks: p.agenticChecks }));
+
+  const s3ByUrl = new Map(section3.perPage.map(p => [p.url, p.checks]));
+  const mergedPages = analyzedPages.map(p => ({
+    url: p.url,
+    checks: [...p.checks, ...p.agenticChecks, ...(s3ByUrl.get(p.url) || [])]
+  }));
+
+  // Nothing about crawlability can be established from a saved page, so Layer 1 carries no checks
+  // rather than inventing passes. It is not scored in any case.
+  const section1Checks = [];
+  const siteLevelChecks = [...section1Checks, section3.boilerplateCheck];
+
+  // The navigation was never followed, so a missing About page cannot be distinguished from one
+  // that simply was not pasted in. Reported as unverified, never as missing.
+  const pageDiscovery = {
+    title: 'Key Page Discovery',
+    skipped: true,
+    categories: Object.entries(PAGE_DISCOVERY_PATTERNS).map(([id, cfg]) => ({
+      id, title: t(`Página de ${cfg.labelEs || cfg.label}`, `${cfg.label} page`), status: 'INCONCLUSIVE', found: null, url: null,
+      detail: t(
+        `No se ha podido comprobar: el análisis se hizo sobre HTML pegado a mano, así que no se siguieron los enlaces de navegación. Esto no significa que falte la página de ${cfg.labelEs || cfg.label}.`,
+        `Could not check — this analysis ran on hand-supplied HTML, so navigation links were never followed. This does not mean the ${cfg.label} page is missing.`
+      ),
+      howToFix: undefined
+    }))
+  };
+
+  const layers = buildLayers(siteLevelChecks, mergedPages);
+  const unregisteredChecks = findUnregisteredChecks(siteLevelChecks, mergedPages);
+  const score = computeScoreFromLayers(layers, section1Checks, analyzedPages.length);
+  const prioritizedFindings = buildPrioritizedFindings(section1Checks, pageDiscovery, section2Pages, section4Pages, section3);
+
+  return {
+    scannedAt: new Date().toISOString(),
+    input: { url: homepageUrl, extraPages: supplied.slice(1).map(p => p.url) },
+    reachable: true,
+    scanQuality: {
+      // The one field that tells every reader this was not a live fetch.
+      source: 'supplied-html',
+      pagesAnalyzed: analyzedPages.length,
+      pagesAttempted: analyzedPages.length,
+      unverifiedChecks: pageDiscovery.categories.length,
+      unregisteredChecks,
+      pageBudget: analyzedPages.length,
+      fetchedAs: null,
+      identityFallback: null,
+      sitemapSweep: { attempted: false, listed: 0, sampled: 0 },
+      timeoutMs: null,
+      maxConcurrency: null
+    },
+    skippedPages: [],
+    score,
+    layers,
+    section1: { title: 'Crawlability Layer', checks: section1Checks },
+    pageDiscovery,
+    section2: { title: 'On-Page GEO Signals', pages: section2Pages },
+    section4: { title: 'Agentic Browsing / AI Agent Accessibility', pages: section4Pages },
+    section3: { title: 'Content Specificity Signals', perPage: section3.perPage.map(p => ({ url: p.url, checks: p.checks })), boilerplate: section3.boilerplateCheck },
+    prioritizedFindings
+  };
+}
