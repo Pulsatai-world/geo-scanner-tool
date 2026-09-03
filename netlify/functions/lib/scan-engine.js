@@ -89,6 +89,10 @@ function classifyFetchError(err, timedOut, ms) {
 // at every user-agent in the morning completed cleanly an hour later with nothing changed.
 // DNS and TLS failures are deliberately excluded — those are settled facts that a retry will
 // not change, and retrying them just doubles the wait before an honest answer.
+// A response that arrived is not the same as a page that can be read. fetchSafe reports ok:true
+// for any answer it received, 403 and 429 included.
+const isOk2xx = r => !!(r && r.ok && r.status >= 200 && r.status < 300);
+
 const RETRYABLE_ERROR_KINDS = new Set(['refused', 'network', 'unknown']);
 const RETRY_BACKOFF_MS = [1500, 4000];
 
@@ -193,9 +197,9 @@ const AI_CRAWLERS = [
 
 const CATEGORY_LABEL = { retrieval: 'live retrieval', training: 'model training', search: 'search indexing' };
 
-async function checkRobots(origin) {
+async function checkRobots(origin, ua = USER_AGENTS.browser.ua) {
   const robotsUrl = origin + '/robots.txt';
-  const res = await fetchSafe(robotsUrl, USER_AGENTS.browser.ua);
+  const res = await fetchSafe(robotsUrl, ua);
   // A genuine 404 and a refused connection are completely different findings. The first means
   // "no rules, all bots allowed" (benign). The second means we learned nothing at all.
   if (isTransportFailure(res)) {
@@ -403,7 +407,24 @@ async function checkMultiUA(pageUrl, browserFetch) {
   );
   let howToFix;
 
-  if (explicitBlocks.length) {
+  // Checked before the bot branches: when the browser itself was refused, every one of them
+  // would describe the comparison backwards.
+  const browserRefused = !(baseline.ok && baseline.status >= 200 && baseline.status < 300);
+  const botsThatRead = bots.filter(b => b.ok && b.status >= 200 && b.status < 300);
+
+  if (browserRefused && botsThatRead.length) {
+    // Not a bot-blocking finding — the opposite. Reported as a warning because the site is
+    // readable by the engines that matter, while a human on the wrong network may be refused.
+    status = 'WARNING';
+    detail = t(
+      `El servidor rechaza al user-agent de navegador (HTTP ${baseline.status}) pero responde con normalidad a ${botsThatRead.map(b => b.label).join(', ')}. Es lo contrario de lo habitual: la IA sí puede leer el sitio web. El análisis se hizo con una de esas identidades. Conviene revisarlo, porque una regla que rechaza peticiones con aspecto de navegador puede estar dejando fuera a visitantes reales en ciertas redes.`,
+      `The server refuses a browser user-agent (HTTP ${baseline.status}) but answers ${botsThatRead.map(b => b.label).join(', ')} normally. That is the reverse of the usual arrangement: AI can read this site. The scan was performed as one of those identities. Worth reviewing, because a rule that refuses browser-shaped requests may also be turning away real visitors on some networks.`
+    );
+    howToFix = t(
+      'Revisa con quien administra el servidor qué regla rechaza las peticiones con user-agent de navegador. Suele ser una protección contra bots configurada al revés: confía en los rastreadores que se identifican y desconfía de todo lo demás. Comprueba también que el sitio web abra con normalidad desde una red móvil o una VPN.',
+      'Ask whoever runs the server which rule refuses browser user-agents. It is usually bot protection configured backwards: trusting crawlers that identify themselves and distrusting everything else. Check the site also opens normally from a mobile network or a VPN.'
+    );
+  } else if (explicitBlocks.length) {
     status = 'FAIL';
     detail = t(
       `El servidor ha rechazado explícitamente: ${explicitBlocks.map(b => `${b.label} (HTTP ${b.status})`).join(', ')}, mientras que el user-agent de navegador sí ha funcionado (HTTP ${baseline.status}). Un estado de rechazo explícito junto a una petición de navegador que funciona es una decisión deliberada del servidor de rechazar a estos rastreadores.`,
@@ -535,7 +556,7 @@ function parseSitemapBody(url, text) {
   };
 }
 
-async function checkSitemap(origin, declaredSitemaps = []) {
+async function checkSitemap(origin, declaredSitemaps = [], ua = USER_AGENTS.browser.ua) {
   // Anything robots.txt declares is authoritative and gets tried first — a site that publishes
   // its sitemap at a non-standard path and says so is correctly configured, and guessing paths
   // before reading the declaration would report it as broken.
@@ -550,7 +571,7 @@ async function checkSitemap(origin, declaredSitemaps = []) {
     if (seen.has(key)) continue;
     seen.add(key);
 
-    const res = await fetchSafe(url, USER_AGENTS.browser.ua);
+    const res = await fetchSafe(url, ua);
     if (isTransportFailure(res)) { transportFailures++; attempts.push({ url, error: res.error }); continue; }
     if (res.status >= 400) { attempts.push({ url, status: res.status }); continue; }
 
@@ -639,9 +660,9 @@ async function checkSitemap(origin, declaredSitemaps = []) {
 // curated map of the site's most useful content. Adoption is still early and no major engine has
 // committed to honouring it, so its absence is never scored as a defect — this reports presence
 // only, as an informational signal and a cheap differentiator to raise with a client.
-async function checkLlmsTxt(origin) {
+async function checkLlmsTxt(origin, ua = USER_AGENTS.browser.ua) {
   const url = origin + '/llms.txt';
-  const res = await fetchSafe(url, USER_AGENTS.browser.ua);
+  const res = await fetchSafe(url, ua);
   if (isTransportFailure(res)) return null; // silent: never invent a row from a network failure
   const found = res.status < 400 && /^\s*#/m.test(res.text) && res.text.length > 20;
   return {
@@ -972,14 +993,14 @@ function extractLocs(xml) {
 }
 
 // Follows a sitemap index one level down, which is as deep as real sitemaps go in practice.
-async function collectSitemapUrls(sitemapUrl, origin, limit) {
-  const res = await fetchSafe(sitemapUrl, USER_AGENTS.browser.ua);
+async function collectSitemapUrls(sitemapUrl, origin, limit, ua = USER_AGENTS.browser.ua) {
+  const res = await fetchSafe(sitemapUrl, ua);
   if (!res.ok || res.status >= 400) return [];
 
   if (/<sitemapindex/i.test(res.text)) {
     const children = extractLocs(res.text).slice(0, MAX_SUBSITEMAPS);
     const pages = [];
-    const fetched = await mapLimited(children, async u => fetchSafe(u, USER_AGENTS.browser.ua));
+    const fetched = await mapLimited(children, async u => fetchSafe(u, ua));
     fetched.forEach(r => { if (r.ok && r.status < 400) pages.push(...extractLocs(r.text)); });
     return dedupeSameOrigin(pages, origin, limit);
   }
@@ -2485,9 +2506,12 @@ export async function runScan({ url, extraPages, maxPages }) {
   // whichever one answers, and report the one that did not as a finding in its own right.
   let timingFetch = await fetchSafe(parsed.href, USER_AGENTS.browser.ua);
   let hostFallback = null;
+  let contentUa = USER_AGENTS.browser.ua;
+  let contentIdentity = USER_AGENTS.browser.label;
+  let identityFallback = null;
   if (!timingFetch.ok && (timingFetch.errorKind === 'dns' || timingFetch.errorKind === 'refused')) {
     const alt = toggleWwwHost(parsed.href);
-    const altFetch = await fetchSafe(alt.href, USER_AGENTS.browser.ua);
+    const altFetch = await fetchSafe(alt.href, contentUa);
     if (altFetch.ok) {
       hostFallback = {
         requested: parsed.hostname,
@@ -2518,6 +2542,29 @@ export async function runScan({ url, extraPages, maxPages }) {
   // Phase 1 — one isolated request. Times the homepage with nothing else contending, and its
   // response doubles as the crawl-test baseline and the HTML source for every on-page check, so
   // the homepage is fetched exactly once.
+  // If the server will not answer a browser, ask as something it will. A 403 to a browser while
+  // every crawler gets 200 is a real configuration — reporting such a site as unreadable says
+  // nothing true about it, and is exactly the case that made this scanner look broken.
+  // Kept before any fallback: this is how the server treats a browser, which is what the crawl
+  // test compares every other identity against.
+  const browserBaseline = timingFetch;
+
+  if (!isOk2xx(timingFetch)) {
+    for (const key of ['googlebot', 'gptbot', 'claudebot', 'oaisearchbot', 'perplexitybot', 'bare']) {
+      const alt = await fetchSafe(parsed.href, USER_AGENTS[key].ua);
+      if (!isOk2xx(alt)) continue;
+      identityFallback = {
+        refusedAs: USER_AGENTS.browser.label,
+        refusedStatus: timingFetch.status,
+        readAs: USER_AGENTS[key].label
+      };
+      contentUa = USER_AGENTS[key].ua;
+      contentIdentity = USER_AGENTS[key].label;
+      timingFetch = alt;
+      break;
+    }
+  }
+
   const homepageFetch = timingFetch;
 
   // A second isolated timing sample, taken only when the first succeeded. checkResponseTime uses
@@ -2526,26 +2573,26 @@ export async function runScan({ url, extraPages, maxPages }) {
   const timingSamples = [timingFetch];
   if (timingFetch.ok) {
     await sleep(INTER_WAVE_DELAY_MS);
-    timingSamples.push(await fetchSafe(homepageUrl, USER_AGENTS.browser.ua));
+    timingSamples.push(await fetchSafe(homepageUrl, contentUa));
   }
 
   // Phase 2 — the remaining four user-agents (paced internally by checkMultiUA).
-  const multiUA = await checkMultiUA(homepageUrl, homepageFetch);
+  const multiUA = await checkMultiUA(homepageUrl, browserBaseline);
 
   // Phase 3 — robots.txt first, on its own, because its Sitemap: declarations tell the sitemap
   // check where to look. Guessing paths before reading the declaration is exactly how a site with
   // a perfectly good sitemap at a non-default location gets reported as having none.
-  const robotsResult = await checkRobots(origin);
+  const robotsResult = await checkRobots(origin, contentUa);
   const declaredSitemaps = (robotsResult.raw && robotsResult.raw.sitemapsDeclared) || [];
 
   // Phase 4 — sitemap (using those declarations) and llms.txt.
   const [sitemapResult, llmsResult] = await mapLimited(
-    [() => checkSitemap(origin, declaredSitemaps), () => checkLlmsTxt(origin)],
+    [() => checkSitemap(origin, declaredSitemaps, contentUa), () => checkLlmsTxt(origin, contentUa)],
     fn => fn()
   );
 
   // Phase 5 — any manually supplied extra pages.
-  const extraPageFetches = await mapLimited(cleanExtraPages, async u => ({ url: u, ...(await fetchSafe(u, USER_AGENTS.browser.ua)) }));
+  const extraPageFetches = await mapLimited(cleanExtraPages, async u => ({ url: u, ...(await fetchSafe(u, contentUa)) }));
 
   const section1Checks = [];
   let $home = null;
@@ -2592,7 +2639,7 @@ export async function runScan({ url, extraPages, maxPages }) {
   if ($home) {
     const categories = discoverKeyPages($home, homepageUrl);
     const toFetch = Object.values(categories).filter(c => c.found && !alreadyCovered.has(normalizeUrlForCompare(c.url)));
-    discoveredFetches = await mapLimited(toFetch, async c => ({ url: c.url, ...(await fetchSafe(c.url, USER_AGENTS.browser.ua)) }));
+    discoveredFetches = await mapLimited(toFetch, async c => ({ url: c.url, ...(await fetchSafe(c.url, contentUa)) }));
     pageDiscovery = { title: 'Key Page Discovery', skipped: false, categories: buildPageDiscoveryReport(categories, alreadyCovered) };
   } else {
     // Homepage was unreachable — there's no nav/header/footer to parse, so discovery can't run.
@@ -2622,12 +2669,12 @@ export async function runScan({ url, extraPages, maxPages }) {
   const sitemapSource = sitemapResult.raw && sitemapResult.raw.url;
   if ($home && sitemapSource && sitemapResult.status !== 'INCONCLUSIVE') {
     const covered = new Set([homepageUrl, ...cleanExtraPages, ...discoveredFetches.map(d => d.url)].map(normalizeUrlForCompare));
-    const listed = await collectSitemapUrls(sitemapSource, origin);
+    const listed = await collectSitemapUrls(sitemapSource, origin, undefined, contentUa);
     const candidates = listed.filter(u => !covered.has(normalizeUrlForCompare(u)));
     const slots = Math.max(0, pageBudget - covered.size);
     const chosen = sampleEvenly(candidates, slots);
     sitemapSweep = { attempted: true, listed: listed.length, sampled: chosen.length };
-    if (chosen.length) sitemapFetches = await mapLimited(chosen, async u => ({ url: u, ...(await fetchSafe(u, USER_AGENTS.browser.ua)) }));
+    if (chosen.length) sitemapFetches = await mapLimited(chosen, async u => ({ url: u, ...(await fetchSafe(u, contentUa)) }));
   }
 
   // Section 2 + 3 + 4 source pages: homepage (if it loaded) + any extra pages that loaded +
@@ -2672,13 +2719,15 @@ export async function runScan({ url, extraPages, maxPages }) {
     // Top-level scan state, so the UI never has to infer "did this work?" from a low number.
     // reachable:false means the scanner could not load the site — there is no score to show and
     // nothing in the report should be read as a judgement about the site's quality.
-    reachable: homepageFetch.ok,
+    reachable: isOk2xx(homepageFetch),
     scanQuality: {
       pagesAnalyzed: analyzedPages.length,
       pagesAttempted: pageFetches.length,
       unverifiedChecks: section1Checks.filter(c => c.status === 'INCONCLUSIVE').length,
       unregisteredChecks,
       pageBudget,
+      fetchedAs: contentIdentity,
+      identityFallback,
       sitemapSweep,
       timeoutMs: FETCH_TIMEOUT_MS,
       maxConcurrency: MAX_CONCURRENT_FETCHES
