@@ -28,7 +28,7 @@ const TX = {
   otherLang:  { es: 'English version', en: 'Versión en español' },
   whyTitle:   { es: 'Por qué publicamos las reglas', en: 'Why the rules are published' },
   why1:       { es: 'La optimización para motores generativos es una máquina leyendo a otra. Un veredicto sobre una página debería, por tanto, poder reproducirlo cualquiera que tenga esa misma página delante: por eso cada revisión de abajo indica la regla exacta que la decide. No «el contenido debería tener valor», sino «por debajo de 300 palabras no cumple, por debajo de 600 marca atención».', en: 'Generative engine optimisation is one machine reading another. A verdict about a page should therefore be reproducible by anyone holding the same page — so every check below states the exact rule that decides it.' },
-  why2:       { es: 'De ahí se siguen tres cosas. Dos análisis de un sitio web que no ha cambiado devuelven el mismo resultado, que es lo que permite medir el avance entre auditorías en lugar de contarlo de memoria. Nada depende del criterio de quien haya corrido el análisis. Y cuando un factor realmente no puede resolverse en remoto —lo más evidente, cualquier cosa detrás de la protección de bots de un CDN— se informa como <b>sin verificar</b> y queda fuera de la calificación, en lugar de suponerlo y presentarlo como un hecho.', en: 'Three things follow. Two scans of an unchanged site return the same result, which is what makes progress between audits measurable rather than anecdotal. Nothing rests on the judgement of whoever happened to run the scan. And where a factor genuinely cannot be settled remotely it is reported as <b>unverified</b> and excluded from the score entirely.' },
+  why2:       { es: 'De ahí se siguen tres cosas. Dos análisis de un sitio web que no ha cambiado devuelven el mismo resultado, que es lo que permite medir el avance entre auditorías en lugar de contarlo de memoria. Nada depende del criterio de quien haya corrido el análisis. Y cuando algo de plano no se puede comprobar a distancia, que es el caso de todo lo que queda detrás de la protección de bots de un CDN, se reporta como <b>sin verificar</b> y no cuenta para la calificación, en vez de suponerlo y darlo por hecho.', en: 'Three things follow. Two scans of an unchanged site return the same result, which is what makes progress between audits measurable rather than anecdotal. Nothing rests on the judgement of whoever happened to run the scan. And where a factor genuinely cannot be settled remotely it is reported as <b>unverified</b> and excluded from the score entirely.' },
   why3:       { es: 'Este documento se genera directamente del registro de revisiones del propio escáner. No puede describir una revisión que la herramienta no haga, ni omitir ninguna que sí haga.', en: 'This document is generated directly from the scanner own check registry. It cannot describe a check the tool does not run, or omit one it does.' },
   colFactor:  { es: 'Factor', en: 'Factor' },
   colMeasured:{ es: 'Qué se mide', en: 'What is measured' },
@@ -40,7 +40,7 @@ const TX = {
   separate:   { es: 'se informa aparte', en: 'reported separately' },
   whoActs:    { es: 'Quién puede resolverlo', en: 'Who can act on it' },
   notScored:  { es: 'no califica', en: 'not scored' },
-  footer:     { es: 'Akore Labs — Metodología de diagnóstico técnico GEO', en: 'Akore Labs — GEO Technical Readiness methodology' },
+  footer:     { es: 'Akore Labs · Metodología de diagnóstico técnico GEO', en: 'Akore Labs — GEO Technical Readiness methodology' },
   generated:  { es: 'Generado desde el registro de revisiones del escáner', en: 'Generated from the scanner check registry' }
 };
 const X = k => (TX[k] || {})[lang] || (TX[k] || {}).es || k;
@@ -66,7 +66,7 @@ const rows = layer => layer.checks.map((c, i) => `
 
 const html = `<!doctype html>
 <html lang="${lang}"><head><meta charset="utf-8">
-<title>${lang === 'es' ? 'Metodología GEO — Qué revisamos' : 'GEO Technical Readiness — What We Check'}</title>
+<title>${lang === 'es' ? 'Metodología GEO: qué revisamos' : 'GEO Technical Readiness — What We Check'}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
 <style>

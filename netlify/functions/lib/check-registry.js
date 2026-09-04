@@ -19,7 +19,7 @@ export const LAYERS = {
   access: {
     id: 'access',
     order: 1,
-    title: t('Capa 1 — Acceso', 'Layer 1 — Access'),
+    title: t('Capa 1: Acceso', 'Layer 1 — Access'),
     question: t('¿Pueden los sistemas de IA acceder al sitio web?', 'Can AI systems reach this site at all?'),
     summary: t(
       'Si los rastreadores y los bots de recuperación pueden descargar el sitio web, y si algo los bloquea, los redirige o les limita la frecuencia. Si esto falla, nada de lo que viene después importa.',
@@ -38,7 +38,7 @@ export const LAYERS = {
   readability: {
     id: 'readability',
     order: 2,
-    title: t('Capa 2 — Legibilidad por máquina', 'Layer 2 — Machine readability'),
+    title: t('Capa 2: Legibilidad por máquina', 'Layer 2 — Machine readability'),
     question: t('¿Puede una máquina interpretar la página y entender su estructura?', 'Can a machine parse the page and understand its structure?'),
     summary: t(
       'Si el contenido existe en el HTML sin necesidad de JavaScript, y si los títulos, los metadatos, los datos estructurados, los encabezados y las regiones lo describen en un formato que una máquina pueda interpretar.',
@@ -50,7 +50,7 @@ export const LAYERS = {
   substance: {
     id: 'substance',
     order: 3,
-    title: t('Capa 3 — Contenido y autoridad', 'Layer 3 — Substance & authority'),
+    title: t('Capa 3: Contenido y autoridad', 'Layer 3 — Substance & authority'),
     question: t('¿Hay aquí algo que merezca ser citado, y alguna razón para confiar en ello?', 'Is there anything here worth citing, and any reason to trust it?'),
     summary: t(
       'Si la página tiene contenido suficientemente concreto y bien delimitado como para ser citada, y si demuestra que detrás hay una organización real y responsable. Una página puede superar todas las revisiones técnicas y aun así no citarse nunca, sencillamente porque no hay nada que citar.',
