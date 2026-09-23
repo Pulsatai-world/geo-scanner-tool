@@ -503,7 +503,7 @@ function checkXRobotsTag(headers) {
         ),
     howToFix: blocking
       ? t(
-          'Elimina la directiva noindex de la encabezado de respuesta X-Robots-Tag. Suele configurarse en el servidor (.htaccess, nginx.conf) o en un plugin de seguridad o SEO, no en el HTML de la página, así que revisa ahí antes que en el editor del CMS.',
+          'Elimina la directiva noindex de el encabezado de respuesta X-Robots-Tag. Suele configurarse en el servidor (.htaccess, nginx.conf) o en un plugin de seguridad o SEO, no en el HTML de la página, así que revisa ahí antes que en el editor del CMS.',
           'Remove the noindex directive from the X-Robots-Tag response header — this is usually set in server config (.htaccess, nginx.conf) or a security/SEO plugin, not in page HTML, so check those before the CMS editor.'
         )
       : t(
@@ -1045,7 +1045,7 @@ function sampleEvenly(urls, n) {
 const PAGE_DISCOVERY_PATTERNS = {
   about: { label: 'About', labelEs: 'Nosotros', patterns: ['quienes-somos', 'quiénes-somos', 'sobre-nosotros', 'about-us', 'nosotros', 'about'] },
   faq: { label: 'FAQ', labelEs: 'Preguntas frecuentes', patterns: ['preguntas-frecuentes', 'preguntas', 'faqs', 'faq'] },
-  contact: { label: 'Contact', labelEs: 'Contacto', labelEs: 'contacto', patterns: ['contactanos', 'contáctanos', 'contact-us', 'contacto', 'contact'] },
+  contact: { label: 'Contact', labelEs: 'Contacto', patterns: ['contactanos', 'contáctanos', 'contact-us', 'contacto', 'contact'] },
   services: { label: 'Services', labelEs: 'Servicios', patterns: ['servicios', 'services'] },
   blog: { label: 'Blog', labelEs: 'Blog', patterns: ['articulos', 'artículos', 'insights', 'noticias', 'blog'] }
 };
@@ -1089,7 +1089,7 @@ function discoverKeyPages($home, homepageUrl) {
   const categories = {};
   for (const [id, cfg] of Object.entries(PAGE_DISCOVERY_PATTERNS)) {
     const match = links.find(link => cfg.patterns.some(p => link.slug.includes(p) || link.text.includes(p)));
-    categories[id] = { id, label: cfg.label, found: !!match, url: match ? match.href : null };
+    categories[id] = { id, label: cfg.label, labelEs: cfg.labelEs, found: !!match, url: match ? match.href : null };
   }
   return categories;
 }
@@ -1113,7 +1113,7 @@ function buildPageDiscoveryReport(categories, alreadyCoveredUrls) {
             `Found at ${c.url}${alreadyIncluded ? ' (already covered by a manually-added page).' : ' — automatically added to the scan.'}`
           )
         : t(
-            `No se encuentra ninguna página de ${c.labelEs || c.label} enlazada desde la navegación, la encabezado o el pie del sitio web.${impactNoteEs}`,
+            `No se encuentra ninguna página de ${c.labelEs || c.label} enlazada desde la navegación, el encabezado o el pie del sitio web.${impactNoteEs}`,
             `No ${c.label} page found linked from the site's nav, header, or footer.${impactNote}`
           ),
       howToFix: c.found ? undefined : t(
