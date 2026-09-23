@@ -244,7 +244,7 @@ async function checkRobots(origin, ua = USER_AGENTS.browser.ua) {
     return {
       id: 'robots-txt',
       title: t('Reglas de robots.txt para rastreadores de IA', 'robots.txt AI crawler rules'),
-      status: 'WARNING',
+      status: 'PASS',
       detail: t(
         `robots.txt devuelve HTTP ${res.status}: no hay reglas explícitas, así que todos los rastreadores, incluidos todos los motores de IA, están permitidos de forma implícita.`,
         `robots.txt returned HTTP ${res.status} — no explicit rules found, so all crawlers including every AI engine are implicitly allowed.`
@@ -1767,7 +1767,11 @@ function checkPageScope($, wordCount, pageType) {
   const anchorOnlyNav = anchorNavLinks.length >= 3 && realNavLinks.length === 0;
   const avgSectionWords = sections.length ? Math.round(sections.reduce((n, s) => n + s.words, 0) / sections.length) : 0;
   const raw = { sectionCount: sections.length, avgSectionWords, anchorOnlyNav, anchorNavLinks: anchorNavLinks.length, realNavLinks: realNavLinks.length, sections: sections.slice(0, 12) };
-  const heads = sections.map(s => s.heading).slice(0, 5).join('; ');
+  const heads = sections.map(s => s.heading).slice(0, 5)
+    .map(h => String(h || '').trim().replace(/[.;:,\s]+$/, ''))
+    .map(h => (h.length > 48 ? h.slice(0, 47).trimEnd() + '…' : h))
+    .map(h => '«' + h + '»')
+    .join(', ');
 
   if (anchorOnlyNav && sections.length >= 3) {
     return {
@@ -1775,12 +1779,12 @@ function checkPageScope($, wordCount, pageType) {
       title: t('Alcance de la página: ¿debería dividirse?', 'Page scope — should this be split?'),
       status: 'FAIL',
       detail: t(
-        `Es un sitio web de una sola página que abarca ${sections.length} temas distintos (${heads}${sections.length > 5 ? '; …' : ''}), con una media de ${avgSectionWords} palabras cada uno. Todos los enlaces de navegación son anclas internas, así que solo existe un documento. Los motores generativos recuperan y citan a nivel de página: ningún tema de aquí puede devolverse ante una consulta sobre él, porque todos compiten dentro de una misma página escasa.`,
-        `This is a single-page site covering ${sections.length} distinct topics (${heads}${sections.length > 5 ? '; …' : ''}), averaging ${avgSectionWords} words each. Every navigation link is an in-page anchor, so there is only one document in existence. Generative engines retrieve and cite at page level, which means no topic here can be returned for a query about it — they are all competing inside one thin page.`
+        `Es un sitio web de una sola página que abarca ${sections.length} temas distintos (${heads}${sections.length > 5 ? ', …' : ''}), con una media de ${avgSectionWords} palabras cada uno. Todos los enlaces de navegación son anclas internas, así que solo existe un documento. Los motores generativos recuperan y citan a nivel de página: ningún tema de aquí puede devolverse ante una consulta sobre él, porque todos compiten dentro de una misma página escasa.`,
+        `This is a single-page site covering ${sections.length} distinct topics (${heads}${sections.length > 5 ? ', …' : ''}), averaging ${avgSectionWords} words each. Every navigation link is an in-page anchor, so there is only one document in existence. Generative engines retrieve and cite at page level, which means no topic here can be returned for a query about it — they are all competing inside one thin page.`
       ),
       howToFix: t(
-        `Divide el sitio web en páginas independientes, una por tema, cada una con su propia URL y su lugar en la navegación: ${heads}. Después dale a cada una ${DEPTH_LIGHT}+ palabras de contenido específico. Es el cambio estructural de mayor impacto disponible para este sitio web, y del que depende cualquier otra recomendación de contenido.`,
-        `Split into separate pages, one per topic, each with its own URL and its own place in the navigation: ${heads}. Then give each ${DEPTH_LIGHT}+ words of specific content. This is the highest-impact structural change available to this site, and every other content recommendation depends on it.`
+        `Divide el sitio web en páginas independientes, una por tema, cada una con su propia URL y su lugar en la navegación. Después dale a cada una ${DEPTH_LIGHT}+ palabras de contenido específico. Es el cambio estructural de mayor impacto disponible para este sitio web, y del que depende cualquier otra recomendación de contenido.`,
+        `Split into separate pages, one per topic, each with its own URL and its own place in the navigation. Then give each ${DEPTH_LIGHT}+ words of specific content. This is the highest-impact structural change available to this site, and every other content recommendation depends on it.`
       ),
       raw
     };
