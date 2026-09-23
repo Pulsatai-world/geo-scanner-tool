@@ -93,6 +93,10 @@ function classifyFetchError(err, timedOut, ms) {
 // for any answer it received, 403 and 429 included.
 const isOk2xx = r => !!(r && r.ok && r.status >= 200 && r.status < 300);
 
+// Picks the word that goes with a count, so a sentence reads "1 archivo" / "14 archivos" instead
+// of "14 archivo(s)".
+const pl = (n, one, many) => (Number(n) === 1 ? one : many);
+
 const RETRYABLE_ERROR_KINDS = new Set(['refused', 'network', 'unknown']);
 const RETRY_BACKOFF_MS = [1500, 4000];
 
@@ -440,7 +444,7 @@ async function checkMultiUA(pageUrl, browserFetch) {
     status = 'WARNING';
     const ra = rateLimited.map(b => b.retryAfter).find(Boolean);
     detail = t(
-      `Límite de peticiones (HTTP ${rateLimited[0].status}) para: ${rateLimited.map(b => b.label).join(', ')}, mientras que el user-agent de navegador sí ha funcionado (HTTP ${baseline.status})${ra ? `. El servidor pide esperar unos ${Math.round(Number(ra) / 60) || 1} minuto(s) (Retry-After: ${ra})` : ''}. Es un límite de frecuencia de peticiones, no una decisión de rechazar rastreadores de IA, y el propio escaneo puede provocarlo, así que no se trata como un hallazgo de bloqueo de bots.`,
+      `Límite de peticiones (HTTP ${rateLimited[0].status}) para: ${rateLimited.map(b => b.label).join(', ')}, mientras que el user-agent de navegador sí ha funcionado (HTTP ${baseline.status})${ra ? `. El servidor pide esperar unos ${Math.round(Number(ra) / 60) || 1} ${pl(Math.round(Number(ra) / 60) || 1, 'minuto', 'minutos')} (Retry-After: ${ra})` : ''}. Es un límite de frecuencia de peticiones, no una decisión de rechazar rastreadores de IA, y el propio escaneo puede provocarlo, así que no se trata como un hallazgo de bloqueo de bots.`,
       `Rate limited (HTTP ${rateLimited[0].status}) for: ${rateLimited.map(b => b.label).join(', ')}, while the browser UA succeeded (HTTP ${baseline.status})${ra ? `. The server asked for a ${Math.round(Number(ra) / 60) || 1}-minute wait (Retry-After: ${ra})` : ''}. This is a request-rate limit, not a decision to reject AI crawlers — and it can be triggered by scanning itself, so it is not treated as a bot-blocking finding.`
     );
     howToFix = t(
@@ -628,7 +632,7 @@ async function checkSitemap(origin, declaredSitemaps = [], ua = USER_AGENTS.brow
       title: t('Sitemap XML', 'XML sitemap'),
       status: 'INCONCLUSIVE',
       detail: t(
-        `No se ha podido comprobar si hay sitemap: las ${attempts.length} ubicación(es) probadas respondieron con un límite de peticiones (HTTP 429/503). Puede que exista un sitemap y no hayamos podido verlo.`,
+        `No se ha podido comprobar si hay sitemap: las ${attempts.length} ${pl(attempts.length, 'ubicación probada respondió', 'ubicaciones probadas respondieron')} con un límite de peticiones (HTTP 429/503). Puede que exista un sitemap y no hayamos podido verlo.`,
         `Whether a sitemap exists could not be checked — all ${attempts.length} location(s) tried responded with a rate limit (HTTP 429/503). A sitemap may well exist and simply not have been reachable.`
       ),
       howToFix: t(
@@ -711,7 +715,7 @@ function checkResponseTime(timingFetch, timingSamples) {
     'Revisa imágenes sin optimizar, CSS o JavaScript sin minificar y la ausencia de caché. Pasar la página por Google PageSpeed Insights da el desglose detallado de qué es exactamente lo que ralentiza.',
     'Check for unoptimized images, unminified CSS/JS, or missing caching — consider running the page through Google PageSpeed Insights for a detailed breakdown of exactly what\'s slow.'
   );
-  const sampleNoteEs = `La más rápida de ${okSamples.length || 1} petición(es) aisladas, cada una lanzada sin nada más compitiendo por el servidor. Mide la capacidad del servidor sin contención y es lo bastante estable para comparar entre auditorías, pero no es un perfil de rendimiento completo: contrasta con Google PageSpeed Insights para un desglose con muestras repetidas.`;
+  const sampleNoteEs = `La más rápida de ${okSamples.length || 1} ${pl(okSamples.length || 1, 'petición aislada', 'peticiones aisladas')}, cada una lanzada sin nada más compitiendo por el servidor. Mide la capacidad del servidor sin contención y es lo bastante estable para comparar entre auditorías, pero no es un perfil de rendimiento completo: contrasta con Google PageSpeed Insights para un desglose con muestras repetidas.`;
   const sampleNote = `Fastest of ${okSamples.length || 1} isolated request(s), each issued with nothing else contending for the origin. This measures the server's uncontended capability and is stable enough to compare across re-audits, but it is not a full performance profile — cross-check with Google PageSpeed Insights for a repeated-sample breakdown.`;
 
   // Speed is unmeasurable without a completed request. This previously returned FAIL, which
@@ -1252,11 +1256,11 @@ function checkFaqSchemaMatch($, mainText) {
     status,
     detail: status === 'PASS'
       ? t(
-          `${matched} de ${pairs.length} pregunta(s) del schema FAQPage coinciden con texto visible en la página.`,
+          `${matched} de ${pairs.length} ${pl(pairs.length, 'pregunta', 'preguntas')} del schema FAQPage ${pl(matched, 'coincide', 'coinciden')} con texto visible en la página.`,
           `${matched}/${pairs.length} FAQPage schema question(s) match text visible on the page.`
         )
       : t(
-          `Solo ${matched} de ${pairs.length} pregunta(s) del schema FAQPage han podido asociarse a contenido visible en la página.`,
+          `Solo ${matched} de ${pairs.length} ${pl(pairs.length, 'pregunta', 'preguntas')} del schema FAQPage ${pl(matched, 'ha podido asociarse', 'han podido asociarse')} a contenido visible en la página.`,
           `Only ${matched}/${pairs.length} FAQPage schema question(s) could be matched to visible content on the page.`
         ),
     howToFix: status === 'PASS' ? undefined : t(
@@ -1331,7 +1335,7 @@ function checkFirstWordsSpecificity(mainText) {
     status,
     detail: status === 'PASS'
       ? t(
-          `Las primeras ~250 palabras contienen ${entities.properNounCount} expresión(es) con aspecto de nombre propio y ${entities.numberCount} cifra(s): el detalle concreto aparece pronto.`,
+          `Las primeras ~250 palabras contienen ${entities.properNounCount} ${pl(entities.properNounCount, 'expresión', 'expresiones')} con aspecto de nombre propio y ${entities.numberCount} ${pl(entities.numberCount, 'cifra', 'cifras')}: el detalle concreto aparece pronto.`,
           `The first ~250 words contain ${entities.properNounCount} proper-noun-like phrase(s) and ${entities.numberCount} number(s) — specific detail appears early.`
         )
       : t(
@@ -1371,7 +1375,7 @@ function checkContactMachineReadability($, mainText) {
     status: found ? 'PASS' : 'WARNING',
     detail: found
       ? t(
-          `Se encuentran vías de contacto legibles por máquina: ${telLinks} enlace(s) tel:, ${mailtoLinks} enlace(s) mailto:${hasContactPointSchema ? ', y schema ContactPoint presente' : ''}.`,
+          `Se encuentran vías de contacto legibles por máquina: ${telLinks} ${pl(telLinks, 'enlace', 'enlaces')} tel:, ${mailtoLinks} ${pl(mailtoLinks, 'enlace', 'enlaces')} mailto:${hasContactPointSchema ? ', y schema ContactPoint presente' : ''}.`,
           `Machine-readable contact method(s) found: ${telLinks} tel: link(s), ${mailtoLinks} mailto: link(s)${hasContactPointSchema ? ', ContactPoint schema present' : ''}.`
         )
       : t(
@@ -1421,7 +1425,7 @@ function checkJsRendering($, mainText, html) {
   }
 
   const evEs = []; const evEn = [];
-  if (shellLike) { evEs.push(`solo ${words} palabras de texto en la respuesta del servidor junto a ${scriptCount} archivo(s) de script`); evEn.push(`only ${words} words of text in the server response alongside ${scriptCount} script file(s)`); }
+  if (shellLike) { evEs.push(`solo ${words} palabras de texto en la respuesta del servidor junto a ${scriptCount} ${pl(scriptCount, 'archivo', 'archivos')} de script`); evEn.push(`only ${words} words of text in the server response alongside ${scriptCount} script ${pl(scriptCount, 'file', 'files')}`); }
   if (emptyMount) { evEs.push(`el punto de montaje ${mountEl} está vacío (${mountText} palabras)`); evEn.push(`the ${mountEl} mount point is empty (${mountText} words)`); }
   if (hasNoscriptWarning) { evEs.push('un bloque <noscript> que pide al visitante activar JavaScript'); evEn.push('a <noscript> block telling visitors to enable JavaScript'); }
 
@@ -1568,8 +1572,8 @@ function checkSchemaCompleteness($) {
     title: t('Integridad de los datos estructurados', 'Structured data completeness'),
     status: 'PASS',
     detail: t(
-      `${known.length} tipo(s) de datos estructurados comprobados (${known.join(', ')}): todas las propiedades obligatorias están presentes y el marcado es razonablemente completo.`,
-      `${known.length} structured data type(s) checked (${known.join(', ')}) — all required properties present and reasonably complete.`
+      `${known.length} ${pl(known.length, 'tipo', 'tipos')} de datos estructurados ${pl(known.length, 'comprobado', 'comprobados')} (${known.join(', ')}): todas las propiedades obligatorias están presentes y el marcado es razonablemente completo.`,
+      `${known.length} structured data ${pl(known.length, 'type', 'types')} checked (${known.join(', ')}) — all required properties present and reasonably complete.`
     ),
     raw: { assessed }
   };
@@ -1630,11 +1634,11 @@ function checkFreshness($, mainText) {
     status,
     detail: status === 'PASS'
       ? t(
-          `La fecha legible por máquina más reciente tiene ${ageDays} día(s): la página declara su actualidad en un formato que los motores pueden leer.`,
+          `La fecha legible por máquina más reciente tiene ${ageDays} ${pl(ageDays, 'día', 'días')}: la página declara su actualidad en un formato que los motores pueden leer.`,
           `Most recent machine-readable date is ${ageDays} day(s) old — the page declares its recency in a form engines can read.`
         )
       : t(
-          `La fecha legible por máquina más reciente tiene ${ageDays} día(s), unos ${Math.round(ageDays / 365)} año(s). El marcado es correcto, pero el contenido en sí se lee como desactualizado.`,
+          `La fecha legible por máquina más reciente tiene ${ageDays} ${pl(ageDays, 'día', 'días')}, unos ${Math.round(ageDays / 365)} ${pl(Math.round(ageDays / 365), 'año', 'años')}. El marcado es correcto, pero el contenido en sí se lee como desactualizado.`,
           `The most recent machine-readable date is ${ageDays} day(s) old (roughly ${Math.round(ageDays / 365)} year(s)). The markup is correct, but the content itself reads as stale.`
         ),
     howToFix: status === 'PASS' ? undefined : t(
@@ -1803,7 +1807,7 @@ function checkPageScope($, wordCount, pageType) {
     status: 'PASS',
     detail: sections.length
       ? t(
-          `${sections.length} sección(es) de contenido con una media de ${avgSectionWords} palabras. La página tiene un alcance coherente y no necesita dividirse.`,
+          `${sections.length} ${pl(sections.length, 'sección', 'secciones')} de contenido con una media de ${avgSectionWords} palabras. La página tiene un alcance coherente y no necesita dividirse.`,
           `${sections.length} content section(s) averaging ${avgSectionWords} words. The page has a coherent scope and does not need splitting.`
         )
       : t(
@@ -1888,9 +1892,9 @@ function checkAnswerFormat($, mainText) {
   const structures = lists + tables * 5 + definitionLists * 3;
 
   const sigEs = []; const sigEn = [];
-  if (questionHeadings.length) { sigEs.push(`${questionHeadings.length} encabezado(s) en forma de pregunta`); sigEn.push(`${questionHeadings.length} question-form heading(s)`); }
-  if (lists) { sigEs.push(`${lists} elemento(s) de lista`); sigEn.push(`${lists} list item(s)`); }
-  if (tables) { sigEs.push(`${tables} tabla(s)`); sigEn.push(`${tables} table(s)`); }
+  if (questionHeadings.length) { sigEs.push(`${questionHeadings.length} ${pl(questionHeadings.length, 'encabezado', 'encabezados')} en forma de pregunta`); sigEn.push(`${questionHeadings.length} question-form ${pl(questionHeadings.length, 'heading', 'headings')}`); }
+  if (lists) { sigEs.push(`${lists} ${pl(lists, 'elemento', 'elementos')} de lista`); sigEn.push(`${lists} list ${pl(lists, 'item', 'items')}`); }
+  if (tables) { sigEs.push(`${tables} ${pl(tables, 'tabla', 'tablas')}`); sigEn.push(`${tables} ${pl(tables, 'table', 'tables')}`); }
 
   const good = questionHeadings.length >= 2 || structures >= 12;
   return {
@@ -2061,7 +2065,7 @@ function analyzePage(pageUrl, html) {
     detail: images.total === 0
       ? t('Esta página no tiene etiquetas <img>.', 'No <img> tags on this page.')
       : t(
-          `${images.withAlt} de ${images.total} imágenes (${images.pct}%) tienen texto alternativo con contenido.`,
+          `Texto alternativo en ${images.withAlt} de ${images.total} ${pl(images.total, 'imagen', 'imágenes')} (${images.pct}%).`,
           `${images.withAlt}/${images.total} images (${images.pct}%) have non-empty alt text.`
         ),
     howToFix: (images.total === 0 || images.pct >= 80) ? undefined : t(
@@ -2170,9 +2174,9 @@ function checkFormLabels($) {
     detail: total === 0
       ? t('Esta página no tiene campos de formulario.', 'No form fields on this page.')
       : unlabeled.length === 0
-        ? t(`Los ${total} campo(s) del formulario tienen una etiqueta asociada.`, `All ${total} form field(s) have an associated label.`)
+        ? t(`${pl(total, 'El', 'Los')} ${total} ${pl(total, 'campo', 'campos')} del formulario ${pl(total, 'tiene', 'tienen')} una etiqueta asociada.`, `All ${total} form ${pl(total, 'field has', 'fields have')} an associated label.`)
         : t(
-            `${unlabeled.length} de ${total} campo(s) del formulario no tienen etiqueta: ${unlabeled.map(u => u.name || u.id || u.type || u.tag).join(', ')}.`,
+            `${unlabeled.length} de ${total} ${pl(total, 'campo', 'campos')} del formulario no ${pl(unlabeled.length, 'tiene', 'tienen')} etiqueta: ${unlabeled.map(u => u.name || u.id || u.type || u.tag).join(', ')}.`,
             `${unlabeled.length}/${total} form field(s) missing a label: ${unlabeled.map(u => u.name || u.id || u.type || u.tag).join(', ')}.`
           ),
     howToFix: unlabeled.length === 0 ? undefined : t(
@@ -2279,7 +2283,7 @@ function analyzeContentSpecificity(pages) {
     status: pages.length < 2 ? 'INCONCLUSIVE' : (boilerplatePairs.length ? 'WARNING' : 'PASS'),
     detail: boilerplatePairs.length
       ? t(
-          `${boilerplatePairs.length} par(es) de páginas comparten contenido muy solapado (${boilerplatePairs.map(p => p.similarity + '%').join(', ')}), señal de páginas de plantilla con poco valor propio.`,
+          `${boilerplatePairs.length} ${pl(boilerplatePairs.length, 'par', 'pares')} de páginas ${pl(boilerplatePairs.length, 'comparte', 'comparten')} contenido muy solapado (${boilerplatePairs.map(p => p.similarity + '%').join(', ')}), señal de páginas de plantilla con poco valor propio.`,
           `${boilerplatePairs.length} page pair(s) share heavily overlapping content (${boilerplatePairs.map(p => p.similarity + '%').join(', ')}) — a sign of templated, low-value pages (this is exactly the pattern found in directory-listing-style sites).`
         )
       : (pages.length > 1
